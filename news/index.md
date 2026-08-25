@@ -1,5 +1,23 @@
 # Changelog
 
+## omopHeor 0.7.1
+
+### New Features & Enhancements
+
+- **Inpatient Overlapping & Contiguous Stay Collapsing**:
+  - [`CohortUtilisation::addInpatients()`](https://rdrr.io/pkg/CohortUtilisation/man/addInpatients.html):
+    Integrated interval collapsing (`cummax` + `gap <= 1 day`) when
+    `collapseOverlapping = TRUE` (default), merging intra-hospital
+    department transfers and contiguous admissions into discrete
+    hospitalization episodes without double-counting LOS days or
+    generating false readmissions.
+  - [`CohortUtilisation::computeHospitalizationCohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/compute_hospitalization_cohorts.html):
+    Added lifecycle guidance pointing users to
+    [`addInpatients()`](https://rdrr.io/pkg/CohortUtilisation/man/addInpatients.html)
+    for in-database HCRU characterization.
+
+------------------------------------------------------------------------
+
 ## omopHeor 0.7.0
 
 ### New Features & Enhancements

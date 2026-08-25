@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">omopHeor</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.7.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.7.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -42,6 +42,19 @@
       <small>Source: <a href="https://github.com/iomedhealth/omopHeor/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.7.1" id="omopheor-071">omopHeor 0.7.1<a class="anchor" aria-label="anchor" href="#omopheor-071"></a></h2>
+<div class="section level3">
+<h3 id="new-features--enhancements-0-7-1">New Features &amp; Enhancements<a class="anchor" aria-label="anchor" href="#new-features--enhancements-0-7-1"></a></h3>
+<ul><li>
+<strong>Inpatient Overlapping &amp; Contiguous Stay Collapsing</strong>:
+<ul><li>
+<code><a href="https://rdrr.io/pkg/CohortUtilisation/man/addInpatients.html" class="external-link">CohortUtilisation::addInpatients()</a></code>: Integrated interval collapsing (<code>cummax</code> + <code>gap &lt;= 1 day</code>) when <code>collapseOverlapping = TRUE</code> (default), merging intra-hospital department transfers and contiguous admissions into discrete hospitalization episodes without double-counting LOS days or generating false readmissions.</li>
+<li>
+<code><a href="https://rdrr.io/pkg/CohortUtilisation/man/compute_hospitalization_cohorts.html" class="external-link">CohortUtilisation::computeHospitalizationCohorts()</a></code>: Added lifecycle guidance pointing users to <code><a href="https://rdrr.io/pkg/CohortUtilisation/man/addInpatients.html" class="external-link">addInpatients()</a></code> for in-database HCRU characterization.</li>
+</ul></li>
+</ul><hr></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.7.0" id="omopheor-070">omopHeor 0.7.0<a class="anchor" aria-label="anchor" href="#omopheor-070"></a></h2>
 <div class="section level3">
