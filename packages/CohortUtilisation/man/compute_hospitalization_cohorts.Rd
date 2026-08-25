@@ -48,3 +48,6 @@ Extracts inpatient visits from \code{visit_occurrence}, collapses contiguous or
 overlapping stays into discrete hospitalization episodes, and derives
 readmission cohorts within a specified washout window.
 }
+\note{
+For in-database Healthcare Resource Utilization (HCRU) characterization on existing study cohorts, prefer \code{\link{addInpatients}}.
+}

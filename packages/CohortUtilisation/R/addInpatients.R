@@ -10,6 +10,8 @@
 #' @param stratifySpecialty Logical; whether to compute specialty breakdown. Default: `FALSE`.
 #' @param specialties Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: `NULL`.
 #' @param readmissions Logical; whether to compute 30-day and 90-day readmissions. Default: `FALSE`.
+#' @param countBy Character scalar specifying count granularity: `"days"` to collapse overlapping/contiguous stays into episodes, or `"records"` to count raw rows. Default: `"days"`.
+#' @param collapseOverlapping Logical; whether to collapse overlapping and contiguous stays. If `FALSE`, forces `countBy = "records"`. Default: `TRUE`.
 #' @param nameStyle Column naming pattern. Default: `"{domain}_{metric}_{window_name}"`.
 #' @param name Name of the new table in the write schema. If NULL, a temporary table is returned.
 #'
@@ -27,6 +29,8 @@ addInpatients <- function(
   stratifySpecialty = FALSE,
   specialties = NULL,
   readmissions = FALSE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 ) {
@@ -41,6 +45,7 @@ addInpatients <- function(
   clean_window <- validateWindow(window)
   name <- validateName(name)
   specialties <- validateSpecialties(specialties)
+  countBy <- validateCountBy(countBy = countBy, collapseOverlapping = collapseOverlapping)
 
   visitConceptIds <- as.integer(visitConceptIds)
   icuConceptIds <- as.integer(icuConceptIds)
@@ -124,41 +129,109 @@ addInpatients <- function(
           (!is.na(.data$specialty_concept_id) & .data$specialty_concept_id %in% icuSpecialtyConceptIds)
       )
 
-    if (readmissions && nrow(win_events) > 0) {
-      win_events <- win_events |>
-        dplyr::arrange(.data$subject_id, .data$visit_start_date) |>
+    if (countBy == "days" && nrow(win_events) > 0) {
+      # Interval collapsing for overlapping/contiguous stays
+      ordered_stays <- win_events |>
+        dplyr::arrange(.data$subject_id, .data$visit_start_date, .data$end_dt) |>
         dplyr::group_by(.data$subject_id) |>
         dplyr::mutate(
-          prev_end = dplyr::lag(.data$end_dt),
-          gap = as.numeric(difftime(.data$visit_start_date, .data$prev_end, units = "days")),
-          readm_30 = ifelse(!is.na(.data$gap) & .data$gap >= 0 & .data$gap <= 30, 1L, 0L),
-          readm_90 = ifelse(!is.na(.data$gap) & .data$gap >= 0 & .data$gap <= 90, 1L, 0L)
-        ) |>
-        dplyr::ungroup()
-    } else {
-      win_events$readm_30 <- 0L
-      win_events$readm_90 <- 0L
-    }
+          max_end_num = cummax(as.numeric(.data$end_dt)),
+          is_new_episode = dplyr::if_else(
+            dplyr::row_number() == 1L | as.numeric(.data$visit_start_date) > dplyr::lag(.data$max_end_num) + 1,
+            1L,
+            0L
+          ),
+          episode_id = cumsum(.data$is_new_episode)
+        )
 
-    win_summary <- win_events |>
-      dplyr::group_by(.data$subject_id) |>
-      dplyr::summarise(
-        inp_adm = sum(ifelse(!.data$is_icu, 1L, 0L), na.rm = TRUE),
-        inp_los = sum(ifelse(!.data$is_icu, .data$los_days, 0), na.rm = TRUE),
-        icu_adm = sum(ifelse(.data$is_icu, 1L, 0L), na.rm = TRUE),
-        icu_los = sum(ifelse(.data$is_icu, .data$los_days, 0), na.rm = TRUE),
-        readm_30 = sum(.data$readm_30, na.rm = TRUE),
-        readm_90 = sum(.data$readm_90, na.rm = TRUE),
-        dplyr::across(
-          dplyr::all_of(spec_cols),
-          ~ sum(ifelse(.x & !.data$is_icu, 1L, 0L), na.rm = TRUE)
-        ),
-        .groups = "drop"
-      ) |>
-      dplyr::mutate(
-        inp_mean_los = ifelse(.data$inp_adm > 0, .data$inp_los / .data$inp_adm, 0),
-        icu_mean_los = ifelse(.data$icu_adm > 0, .data$icu_los / .data$icu_adm, 0)
-      )
+      episodes <- ordered_stays |>
+        dplyr::group_by(.data$subject_id, .data$episode_id) |>
+        dplyr::summarise(
+          ep_start = min(.data$visit_start_date, na.rm = TRUE),
+          ep_end = max(.data$end_dt, na.rm = TRUE),
+          ep_los = max(0, as.numeric(difftime(max(.data$end_dt), min(.data$visit_start_date), units = "days"))),
+          has_inp = any(!.data$is_icu),
+          icu_adm_cnt = sum(ifelse(.data$is_icu, 1L, 0L), na.rm = TRUE),
+          icu_los_cnt = sum(ifelse(.data$is_icu, .data$los_days, 0), na.rm = TRUE),
+          dplyr::across(
+            dplyr::all_of(spec_cols),
+            ~ any(.x & !.data$is_icu)
+          ),
+          .groups = "drop"
+        )
+
+      if (readmissions && nrow(episodes) > 0) {
+        episodes <- episodes |>
+          dplyr::arrange(.data$subject_id, .data$ep_start) |>
+          dplyr::group_by(.data$subject_id) |>
+          dplyr::mutate(
+            prev_ep_end = dplyr::lag(.data$ep_end),
+            ep_gap = as.numeric(difftime(.data$ep_start, .data$prev_ep_end, units = "days")),
+            readm_30 = ifelse(!is.na(.data$ep_gap) & .data$ep_gap >= 0 & .data$ep_gap <= 30, 1L, 0L),
+            readm_90 = ifelse(!is.na(.data$ep_gap) & .data$ep_gap >= 0 & .data$ep_gap <= 90, 1L, 0L)
+          ) |>
+          dplyr::ungroup()
+      } else {
+        episodes$readm_30 <- 0L
+        episodes$readm_90 <- 0L
+      }
+
+      win_summary <- episodes |>
+        dplyr::group_by(.data$subject_id) |>
+        dplyr::summarise(
+          inp_adm = sum(ifelse(.data$has_inp, 1L, 0L), na.rm = TRUE),
+          inp_los = sum(ifelse(.data$has_inp, .data$ep_los, 0), na.rm = TRUE),
+          icu_adm = sum(.data$icu_adm_cnt, na.rm = TRUE),
+          icu_los = sum(.data$icu_los_cnt, na.rm = TRUE),
+          readm_30 = sum(.data$readm_30, na.rm = TRUE),
+          readm_90 = sum(.data$readm_90, na.rm = TRUE),
+          dplyr::across(
+            dplyr::all_of(spec_cols),
+            ~ sum(ifelse(.x, 1L, 0L), na.rm = TRUE)
+          ),
+          .groups = "drop"
+        ) |>
+        dplyr::mutate(
+          inp_mean_los = ifelse(.data$inp_adm > 0, .data$inp_los / .data$inp_adm, 0),
+          icu_mean_los = ifelse(.data$icu_adm > 0, .data$icu_los / .data$icu_adm, 0)
+        )
+    } else {
+      if (readmissions && nrow(win_events) > 0) {
+        win_events <- win_events |>
+          dplyr::arrange(.data$subject_id, .data$visit_start_date) |>
+          dplyr::group_by(.data$subject_id) |>
+          dplyr::mutate(
+            prev_end = dplyr::lag(.data$end_dt),
+            gap = as.numeric(difftime(.data$visit_start_date, .data$prev_end, units = "days")),
+            readm_30 = ifelse(!is.na(.data$gap) & .data$gap >= 0 & .data$gap <= 30, 1L, 0L),
+            readm_90 = ifelse(!is.na(.data$gap) & .data$gap >= 0 & .data$gap <= 90, 1L, 0L)
+          ) |>
+          dplyr::ungroup()
+      } else {
+        win_events$readm_30 <- 0L
+        win_events$readm_90 <- 0L
+      }
+
+      win_summary <- win_events |>
+        dplyr::group_by(.data$subject_id) |>
+        dplyr::summarise(
+          inp_adm = sum(ifelse(!.data$is_icu, 1L, 0L), na.rm = TRUE),
+          inp_los = sum(ifelse(!.data$is_icu, .data$los_days, 0), na.rm = TRUE),
+          icu_adm = sum(ifelse(.data$is_icu, 1L, 0L), na.rm = TRUE),
+          icu_los = sum(ifelse(.data$is_icu, .data$los_days, 0), na.rm = TRUE),
+          readm_30 = sum(.data$readm_30, na.rm = TRUE),
+          readm_90 = sum(.data$readm_90, na.rm = TRUE),
+          dplyr::across(
+            dplyr::all_of(spec_cols),
+            ~ sum(ifelse(.x & !.data$is_icu, 1L, 0L), na.rm = TRUE)
+          ),
+          .groups = "drop"
+        ) |>
+        dplyr::mutate(
+          inp_mean_los = ifelse(.data$inp_adm > 0, .data$inp_los / .data$inp_adm, 0),
+          icu_mean_los = ifelse(.data$icu_adm > 0, .data$icu_los / .data$icu_adm, 0)
+        )
+    }
 
     # Naming
     c_inp_adm <- paste0("inpatient_admissions_", win_name)
@@ -235,6 +308,8 @@ addIcuStays <- function(
   window = list(c(-365, -1), c(0, 365)),
   icuConceptIds = 32037L,
   icuSpecialtyConceptIds = c(38004500L),
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 ) {
@@ -248,6 +323,8 @@ addIcuStays <- function(
     icuConceptIds = icuConceptIds,
     icuSpecialtyConceptIds = icuSpecialtyConceptIds,
     readmissions = FALSE,
+    countBy = countBy,
+    collapseOverlapping = collapseOverlapping,
     nameStyle = nameStyle,
     name = name
   )

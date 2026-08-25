@@ -184,17 +184,72 @@ extract_hcru <- function(
   }
 
   inp_windowed <- map_to_windows(inp_visits)
-  inp_sum <- inp_windowed |>
-    dplyr::group_by(.data$subject_id, .data$window) |>
-    dplyr::summarise(
-      inpatient_admissions = sum(ifelse(!.data$is_icu, 1L, 0L), na.rm = TRUE),
-      inpatient_los_days = sum(ifelse(!.data$is_icu, .data$los_days, 0), na.rm = TRUE),
-      icu_admissions = sum(ifelse(.data$is_icu, 1L, 0L), na.rm = TRUE),
-      icu_los_days = sum(ifelse(.data$is_icu, .data$los_days, 0), na.rm = TRUE),
-      readmissions_30d = sum(.data$readmissions_30d, na.rm = TRUE),
-      readmissions_90d = sum(.data$readmissions_90d, na.rm = TRUE),
-      .groups = "drop"
-    )
+  inp_sum <- if (count_by == "days" && nrow(inp_windowed) > 0) {
+    ordered_inp <- inp_windowed |>
+      dplyr::arrange(.data$subject_id, .data$window, .data$event_date, .data$end_date) |>
+      dplyr::group_by(.data$subject_id, .data$window) |>
+      dplyr::mutate(
+        max_end_num = cummax(as.numeric(.data$end_date)),
+        is_new_ep = dplyr::if_else(
+          dplyr::row_number() == 1L | as.numeric(.data$event_date) > dplyr::lag(.data$max_end_num) + 1,
+          1L,
+          0L
+        ),
+        ep_id = cumsum(.data$is_new_ep)
+      )
+
+    ep_summary <- ordered_inp |>
+      dplyr::group_by(.data$subject_id, .data$window, .data$ep_id) |>
+      dplyr::summarise(
+        ep_start = min(.data$event_date, na.rm = TRUE),
+        ep_end = max(.data$end_date, na.rm = TRUE),
+        ep_los = max(0, as.numeric(difftime(max(.data$end_date), min(.data$event_date), units = "days"))),
+        has_inp = any(!.data$is_icu),
+        icu_adm = sum(ifelse(.data$is_icu, 1L, 0L), na.rm = TRUE),
+        icu_los = sum(ifelse(.data$is_icu, .data$los_days, 0), na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    if (calculate_readmissions && nrow(ep_summary) > 0) {
+      ep_summary <- ep_summary |>
+        dplyr::arrange(.data$subject_id, .data$window, .data$ep_start) |>
+        dplyr::group_by(.data$subject_id, .data$window) |>
+        dplyr::mutate(
+          prev_ep_end = dplyr::lag(.data$ep_end),
+          ep_gap = as.numeric(difftime(.data$ep_start, .data$prev_ep_end, units = "days")),
+          readmissions_30d = ifelse(!is.na(.data$ep_gap) & .data$ep_gap >= 0 & .data$ep_gap <= 30, 1L, 0L),
+          readmissions_90d = ifelse(!is.na(.data$ep_gap) & .data$ep_gap >= 0 & .data$ep_gap <= 90, 1L, 0L)
+        ) |>
+        dplyr::ungroup()
+    } else {
+      ep_summary$readmissions_30d <- 0L
+      ep_summary$readmissions_90d <- 0L
+    }
+
+    ep_summary |>
+      dplyr::group_by(.data$subject_id, .data$window) |>
+      dplyr::summarise(
+        inpatient_admissions = sum(ifelse(.data$has_inp, 1L, 0L), na.rm = TRUE),
+        inpatient_los_days = sum(ifelse(.data$has_inp, .data$ep_los, 0), na.rm = TRUE),
+        icu_admissions = sum(.data$icu_adm, na.rm = TRUE),
+        icu_los_days = sum(.data$icu_los, na.rm = TRUE),
+        readmissions_30d = sum(.data$readmissions_30d, na.rm = TRUE),
+        readmissions_90d = sum(.data$readmissions_90d, na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    inp_windowed |>
+      dplyr::group_by(.data$subject_id, .data$window) |>
+      dplyr::summarise(
+        inpatient_admissions = sum(ifelse(!.data$is_icu, 1L, 0L), na.rm = TRUE),
+        inpatient_los_days = sum(ifelse(!.data$is_icu, .data$los_days, 0), na.rm = TRUE),
+        icu_admissions = sum(ifelse(.data$is_icu, 1L, 0L), na.rm = TRUE),
+        icu_los_days = sum(ifelse(.data$is_icu, .data$los_days, 0), na.rm = TRUE),
+        readmissions_30d = sum(.data$readmissions_30d, na.rm = TRUE),
+        readmissions_90d = sum(.data$readmissions_90d, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
 
   inpatient_df <- scaffold |>
     dplyr::left_join(inp_sum, by = c("subject_id", "window")) |>

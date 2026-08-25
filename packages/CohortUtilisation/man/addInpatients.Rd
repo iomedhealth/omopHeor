@@ -18,6 +18,8 @@ addInpatients(
   stratifySpecialty = FALSE,
   specialties = NULL,
   readmissions = FALSE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 )
@@ -33,6 +35,8 @@ addHospitalizations(
   stratifySpecialty = FALSE,
   specialties = NULL,
   readmissions = FALSE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 )
@@ -48,6 +52,8 @@ addInpatient(
   stratifySpecialty = FALSE,
   specialties = NULL,
   readmissions = FALSE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 )
@@ -59,6 +65,8 @@ addIcuStays(
   window = list(c(-365, -1), c(0, 365)),
   icuConceptIds = 32037L,
   icuSpecialtyConceptIds = c(38004500L),
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 )
@@ -83,6 +91,10 @@ addIcuStays(
 \item{specialties}{Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: \code{NULL}.}
 
 \item{readmissions}{Logical; whether to compute 30-day and 90-day readmissions. Default: \code{FALSE}.}
+
+\item{countBy}{Character scalar specifying count granularity: \code{"days"} to collapse overlapping/contiguous stays into episodes, or \code{"records"} to count raw rows. Default: \code{"days"}.}
+
+\item{collapseOverlapping}{Logical; whether to collapse overlapping and contiguous stays. If \code{FALSE}, forces \code{countBy = "records"}. Default: \code{TRUE}.}
 
 \item{nameStyle}{Column naming pattern. Default: \code{"{domain}_{metric}_{window_name}"}.}
 

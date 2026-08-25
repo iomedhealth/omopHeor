@@ -1,3 +1,13 @@
+# omopHeor 0.7.1
+
+## New Features & Enhancements
+
+* **Inpatient Overlapping & Contiguous Stay Collapsing**:
+  * `CohortUtilisation::addInpatients()`: Integrated interval collapsing (`cummax` + `gap <= 1 day`) when `collapseOverlapping = TRUE` (default), merging intra-hospital department transfers and contiguous admissions into discrete hospitalization episodes without double-counting LOS days or generating false readmissions.
+  * `CohortUtilisation::computeHospitalizationCohorts()`: Added lifecycle guidance pointing users to `addInpatients()` for in-database HCRU characterization.
+
+---
+
 # omopHeor 0.7.0
 
 ## New Features & Enhancements

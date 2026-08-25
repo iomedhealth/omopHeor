@@ -1,6 +1,6 @@
 Package: CohortEconomics
 Title: Causal Propensity Scores, Health-State Trajectories, and Cost-Effectiveness Analysis on OMOP CDM
-Version: 0.7.0
+Version: 0.7.1
 Authors@R: c(
     person(given = "Gabriel",
            family = "Maeztu",
@@ -22,8 +22,8 @@ Roxygen: list(markdown = TRUE)
 Imports: 
     CDMConnector (>= 1.4.0),
     omopgenerics (>= 0.3.0),
-    CohortUtilisation (>= 0.7.0),
-    CohortCosts (>= 0.7.0),
+    CohortUtilisation (>= 0.7.1),
+    CohortCosts (>= 0.7.1),
     BCEA,
     dbplyr (>= 2.4.0),
     dplyr (>= 1.1.0),

@@ -153,3 +153,101 @@ test_that("addInpatients supports infinite and NA window bounds without case mis
 
   expect_true("inpatient_admissions_minf_to_inf" %in% colnames(resBilateral))
 })
+
+test_that("addInpatients collapses overlapping stays and contiguous hospitalizations", {
+  con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+
+  person <- tibble::tibble(
+    person_id = 1L,
+    gender_concept_id = 8507L,
+    year_of_birth = 1980L,
+    race_concept_id = 0L,
+    ethnicity_concept_id = 0L
+  )
+  observation_period <- tibble::tibble(
+    observation_period_id = 1L,
+    person_id = 1L,
+    observation_period_start_date = as.Date("2000-01-01"),
+    observation_period_end_date = as.Date("2025-12-31"),
+    period_type_concept_id = 0L
+  )
+  provider <- tibble::tibble(
+    provider_id = 1L,
+    specialty_concept_id = 38004446L
+  )
+
+  # Person 1 has:
+  # Episode 1: Stay A (2010-02-01 to 2010-02-05) + Stay B (2010-02-04 to 2010-02-10) -> Overlapping! Collapses to 2010-02-01 to 2010-02-10 (9 days)
+  # Episode 2: Stay C (2010-02-25 to 2010-02-28) -> Discharge of Ep 1 was 2010-02-10. Gap is 15 days -> Readmission <= 30d!
+  # Contiguous to Episode 2: Stay D (2010-03-01 to 2010-03-05) -> Gap between Feb 28 and Mar 01 is 1 day -> Contiguous! Merges with Ep 2 to 2010-02-25 to 2010-03-05 (8 days)
+  visit_occurrence <- tibble::tibble(
+    visit_occurrence_id = 1:4,
+    person_id = rep(1L, 4),
+    visit_concept_id = rep(9201L, 4),
+    visit_start_date = as.Date(c(
+      "2010-02-01", "2010-02-04",
+      "2010-02-25", "2010-03-01"
+    )),
+    visit_end_date = as.Date(c(
+      "2010-02-05", "2010-02-10",
+      "2010-02-28", "2010-03-05"
+    )),
+    visit_type_concept_id = rep(44818517L, 4),
+    provider_id = rep(1L, 4)
+  )
+
+  DBI::dbWriteTable(con, "person", person)
+  DBI::dbWriteTable(con, "observation_period", observation_period)
+  DBI::dbWriteTable(con, "provider", provider)
+  DBI::dbWriteTable(con, "visit_occurrence", visit_occurrence)
+
+  cdm <- CDMConnector::cdmFromCon(con, cdmSchema = "main", writeSchema = "main")
+
+  target <- tibble::tibble(
+    cohort_definition_id = 1L,
+    subject_id = 1L,
+    cohort_start_date = as.Date("2010-01-01"),
+    cohort_end_date = as.Date("2010-12-31")
+  )
+  cdm <- omopgenerics::insertTable(cdm, name = "target_cohort", table = target)
+  cdm$target_cohort <- omopgenerics::newCohortTable(cdm$target_cohort)
+
+  # 1. Collapsed mode (Default)
+  res_collapsed <- cdm$target_cohort |>
+    addInpatients(
+      window = list(followup = c(0, 365)),
+      readmissions = TRUE,
+      collapseOverlapping = TRUE
+    ) |>
+    dplyr::collect()
+
+  # 4 raw records collapse into 2 distinct episodes:
+  # Ep 1: Feb 1-10 (9 days)
+  # Ep 2: Feb 25 - Mar 5 (8 days)
+  # Total admissions = 2, total LOS = 17, mean LOS = 8.5, readmissions 30d = 1
+  expect_equal(res_collapsed$inpatient_admissions_followup, 2)
+  expect_equal(res_collapsed$inpatient_los_days_followup, 17)
+  expect_equal(res_collapsed$inpatient_mean_los_days_followup, 8.5)
+  expect_equal(res_collapsed$readmissions_30d_followup, 1)
+
+  # 2. Uncollapsed mode: collapseOverlapping = FALSE
+  res_uncollapsed <- cdm$target_cohort |>
+    addInpatients(
+      window = list(followup = c(0, 365)),
+      readmissions = TRUE,
+      collapseOverlapping = FALSE
+    ) |>
+    dplyr::collect()
+
+  # 4 raw records, total LOS = (5-1) + (10-4) + (28-25) + (5-1) = 4 + 6 + 3 + 4 = 17, mean = 4.25
+  expect_equal(res_uncollapsed$inpatient_admissions_followup, 4)
+  expect_equal(res_uncollapsed$inpatient_mean_los_days_followup, 4.25)
+
+  # 3. Invalid countBy error
+  expect_error(
+    addInpatients(cdm$target_cohort, countBy = "invalid"),
+    "Argument 'countBy' must be either 'days' or 'records'"
+  )
+})
+

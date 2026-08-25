@@ -10,6 +10,8 @@
 #' @param visit_concept_ids Integer vector of OMOP visit concept IDs. Default: `c(9201L, 262L, 32037L, 581379L)`.
 #' @param readmission_window Maximum days between previous discharge and next admission. Default: 30.
 #'
+#' @note For in-database Healthcare Resource Utilization (HCRU) characterization on existing study cohorts, prefer \code{\link{addInpatients}}.
+#'
 #' @return An `omopgenerics` cohort table with cohort definitions:
 #' - `1`: `hospitalization` (collapsed inpatient episodes)
 #' - `2`: `readmission` (episodes occurring within `readmission_window` days of prior discharge)
