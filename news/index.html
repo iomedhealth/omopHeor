@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">omopHeor</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.6.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.7.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -42,6 +42,24 @@
       <small>Source: <a href="https://github.com/iomedhealth/omopHeor/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.7.0" id="omopheor-070">omopHeor 0.7.0<a class="anchor" aria-label="anchor" href="#omopheor-070"></a></h2>
+<div class="section level3">
+<h3 id="new-features--enhancements-0-7-0">New Features &amp; Enhancements<a class="anchor" aria-label="anchor" href="#new-features--enhancements-0-7-0"></a></h3>
+<ul><li>
+<strong>Same-Day &amp; Overlapping Visit Deduplication for HCRU</strong>:
+<ul><li>
+<code><a href="https://rdrr.io/pkg/CohortUtilisation/man/addOutpatientVisits.html" class="external-link">CohortUtilisation::addOutpatientVisits()</a></code>: Added <code>countBy = c("days", "records")</code> (default: <code>"days"</code>) and <code>collapseOverlapping = TRUE</code> to count distinct calendar visit dates and eliminate administrative duplicate record overestimation.</li>
+<li>
+<code><a href="https://rdrr.io/pkg/CohortUtilisation/man/addEmergencyCare.html" class="external-link">CohortUtilisation::addEmergencyCare()</a></code>: Collapses same-day emergency encounters and overlapping care spans by default into distinct emergency presentations.</li>
+<li>
+<code><a href="https://rdrr.io/pkg/CohortUtilisation/man/addVisits.html" class="external-link">CohortUtilisation::addVisits()</a></code>: Propagates <code>countBy</code> and <code>collapseOverlapping</code> across Inpatient, Outpatient, and Emergency care settings in a single call.</li>
+<li>
+<code><a href="https://rdrr.io/pkg/CohortEconomics/man/extract_hcru.html" class="external-link">CohortEconomics::extract_hcru()</a></code>: Harmonized to calculate distinct visit dates in <code>study$hcru$patient_summary</code> and <code>study$hcru$outpatient</code> while keeping <code>study$costs</code> and <code>total_cost</code> 100% exhaustive at the financial event level.</li>
+<li>Specialty-stratified deduplication: Outpatient visits calculate distinct dates per specialty independently while maintaining distinct global outpatient visit day totals.</li>
+</ul></li>
+</ul><hr></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.6.0" id="omopheor-060">omopHeor 0.6.0<a class="anchor" aria-label="anchor" href="#omopheor-060"></a></h2>
 <div class="section level3">
