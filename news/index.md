@@ -1,5 +1,35 @@
 # Changelog
 
+## omopHeor 0.7.2
+
+### New Features & Enhancements
+
+- **Configurable Episode Gap Threshold (`gapDays`) in Inpatient & Visit
+  Utilization**:
+  - [`CohortUtilisation::addInpatients()`](https://rdrr.io/pkg/CohortUtilisation/man/addInpatients.html)
+    &
+    [`CohortUtilisation::addIcuStays()`](https://rdrr.io/pkg/CohortUtilisation/man/addInpatients.html):
+    Added `gapDays = 1L` (with `collapseGap = NULL` alias) allowing
+    users to configure the allowable discharge-to-admission gap
+    (e.g. `gapDays = 0L` for strict overlap only, `gapDays = 1L` for
+    next-day transfers, `gapDays = N` for multi-day washouts).
+  - [`CohortUtilisation::addVisits()`](https://rdrr.io/pkg/CohortUtilisation/man/addVisits.html):
+    Added `gapDays` and propagated it through to the inpatient domain
+    enricher.
+  - [`CohortUtilisation::computeHospitalizationCohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/compute_hospitalization_cohorts.html)
+    /
+    [`compute_hospitalization_cohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/compute_hospitalization_cohorts.html):
+    Added `gapDays` / `collapseGap` / `collapse_gap` to control interval
+    collapsing boundaries during cohort generation.
+  - [`CohortEconomics::extract_hcru()`](https://rdrr.io/pkg/CohortEconomics/man/extract_hcru.html):
+    Added `gap_days = 1L` (with `gapDays = NULL` alias) to apply the
+    configurable gap during inpatient episode collapsing and readmission
+    detection.
+  - `CohortUtilisation::validateGapDays()`: Added centralized argument
+    validation for non-negative integers ($`\ge 0`$).
+
+------------------------------------------------------------------------
+
 ## omopHeor 0.7.1
 
 ### New Features & Enhancements
