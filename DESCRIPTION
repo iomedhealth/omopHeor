@@ -1,6 +1,6 @@
 Package: omopHeor
 Title: Health Economics and Outcomes Research Pipeline on OMOP CDM
-Version: 0.7.1
+Version: 0.7.2
 Authors@R: c(
     person(given = "Gabriel",
            family = "Maeztu",
@@ -21,9 +21,9 @@ Depends:
     R (>= 4.1.0)
 Roxygen: list(markdown = TRUE)
 Imports: 
-    CohortUtilisation (>= 0.7.1),
-    CohortCosts (>= 0.7.1),
-    CohortEconomics (>= 0.7.1),
+    CohortUtilisation (>= 0.7.2),
+    CohortCosts (>= 0.7.2),
+    CohortEconomics (>= 0.7.2),
     CDMConnector (>= 1.4.0),
     omopgenerics (>= 0.3.0),
     dbplyr (>= 2.4.0),

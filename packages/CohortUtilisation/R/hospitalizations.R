@@ -9,6 +9,8 @@
 #' @param name String specifying the cohort table name in the write schema.
 #' @param visit_concept_ids Integer vector of OMOP visit concept IDs. Default: `c(9201L, 262L, 32037L, 581379L)`.
 #' @param readmission_window Maximum days between previous discharge and next admission. Default: 30.
+#' @param collapse_gap Maximum gap in days between contiguous stays to collapse into a single episode. Default: `1L`.
+#' @param gap_days Optional alias for `collapse_gap`.
 #'
 #' @note For in-database Healthcare Resource Utilization (HCRU) characterization on existing study cohorts, prefer \code{\link{addInpatients}}.
 #'
@@ -21,13 +23,17 @@ compute_hospitalization_cohorts <- function(
   cdm,
   name,
   visit_concept_ids = c(9201L, 262L, 32037L, 581379L),
-  readmission_window = 30L
+  readmission_window = 30L,
+  collapse_gap = 1L,
+  gap_days = NULL
 ) {
   # ponytail: interval collapsing via cumulative max end date and lagged boundary detection
   omopgenerics::assertCharacter(name, length = 1)
   omopgenerics::assertClass(cdm, "cdm_reference")
   visit_concept_ids <- as.integer(visit_concept_ids)
   readmission_window <- as.integer(readmission_window)
+  gap_val <- if (!is.null(gap_days)) gap_days else collapse_gap
+  collapse_gap <- validateGapDays(gapDays = gap_val)
 
   prefix <- omopgenerics::tmpPrefix()
 
@@ -64,7 +70,7 @@ compute_hospitalization_cohorts <- function(
     dplyr::mutate(
       prev_max_end = dplyr::lag(.data$max_end_so_far),
       is_new_episode = dplyr::if_else(
-        dplyr::row_number() == 1L | .data$cohort_start_date > .data$prev_max_end + 1L,
+        dplyr::row_number() == 1L | .data$cohort_start_date > .data$prev_max_end + .env$collapse_gap,
         1L,
         0L
       )
@@ -121,6 +127,8 @@ compute_hospitalization_cohorts <- function(
 #' @param visitConceptIds Integer vector of OMOP visit concept IDs. Default: `c(9201L, 262L, 581379L)`.
 #' @param icuConceptIds Integer vector of OMOP ICU visit concept IDs. Default: `32037L`.
 #' @param readmissionWindow Maximum days between previous discharge and next admission. Default: 30.
+#' @param gapDays Maximum gap in days between contiguous stays to collapse into a single episode. Default: `1L`.
+#' @param collapseGap Optional alias for `gapDays`. Default: `NULL`.
 #' @param readmission_window Backward compatible snake_case parameter.
 #' @export
 computeHospitalizationCohorts <- function(
@@ -129,14 +137,18 @@ computeHospitalizationCohorts <- function(
   visitConceptIds = c(9201L, 262L, 581379L),
   icuConceptIds = 32037L,
   readmissionWindow = 30L,
+  gapDays = 1L,
+  collapseGap = NULL,
   readmission_window = NULL
 ) {
   win <- if (!is.null(readmission_window)) readmission_window else readmissionWindow
+  gap <- if (!is.null(collapseGap)) collapseGap else gapDays
   all_concepts <- unique(c(visitConceptIds, icuConceptIds))
   compute_hospitalization_cohorts(
     cdm = cdm,
     name = name,
     visit_concept_ids = all_concepts,
-    readmission_window = win
+    readmission_window = win,
+    collapse_gap = gap
   )
 }

@@ -20,6 +20,8 @@ addVisits(
   emergencyVisitConceptIds = c(9203L, 262L, 581478L),
   icuConceptIds = 32037L,
   readmissions = FALSE,
+  gapDays = 1L,
+  collapseGap = NULL,
   countBy = c("days", "records"),
   collapseOverlapping = TRUE,
   name = NULL
@@ -55,6 +57,10 @@ addVisits(
 \item{icuConceptIds}{OMOP visit concept IDs for ICU stays. Default: \code{32037L}.}
 
 \item{readmissions}{Logical; whether to compute 30-day and 90-day readmissions for inpatient stays. Default: \code{FALSE}.}
+
+\item{gapDays}{Integer scalar >= 0. Maximum gap in days between contiguous stays to collapse into a single episode. Default: \code{1L}.}
+
+\item{collapseGap}{Optional alias for \code{gapDays}. Default: \code{NULL}.}
 
 \item{countBy}{Character scalar specifying count granularity: \code{"days"} to count distinct visit start dates, or \code{"records"} to count raw database rows. Default: \code{"days"}.}
 

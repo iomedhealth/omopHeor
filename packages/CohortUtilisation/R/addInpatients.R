@@ -10,6 +10,8 @@
 #' @param stratifySpecialty Logical; whether to compute specialty breakdown. Default: `FALSE`.
 #' @param specialties Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: `NULL`.
 #' @param readmissions Logical; whether to compute 30-day and 90-day readmissions. Default: `FALSE`.
+#' @param gapDays Integer scalar >= 0. Maximum gap in days between contiguous stays to collapse into a single episode. Default: `1L`.
+#' @param collapseGap Optional alias for `gapDays`. Default: `NULL`.
 #' @param countBy Character scalar specifying count granularity: `"days"` to collapse overlapping/contiguous stays into episodes, or `"records"` to count raw rows. Default: `"days"`.
 #' @param collapseOverlapping Logical; whether to collapse overlapping and contiguous stays. If `FALSE`, forces `countBy = "records"`. Default: `TRUE`.
 #' @param nameStyle Column naming pattern. Default: `"{domain}_{metric}_{window_name}"`.
@@ -29,6 +31,8 @@ addInpatients <- function(
   stratifySpecialty = FALSE,
   specialties = NULL,
   readmissions = FALSE,
+  gapDays = 1L,
+  collapseGap = NULL,
   countBy = c("days", "records"),
   collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
@@ -45,6 +49,7 @@ addInpatients <- function(
   clean_window <- validateWindow(window)
   name <- validateName(name)
   specialties <- validateSpecialties(specialties)
+  gapDays <- validateGapDays(gapDays = gapDays, collapseGap = collapseGap)
   countBy <- validateCountBy(countBy = countBy, collapseOverlapping = collapseOverlapping)
 
   visitConceptIds <- as.integer(visitConceptIds)
@@ -137,7 +142,7 @@ addInpatients <- function(
         dplyr::mutate(
           max_end_num = cummax(as.numeric(.data$end_dt)),
           is_new_episode = dplyr::if_else(
-            dplyr::row_number() == 1L | as.numeric(.data$visit_start_date) > dplyr::lag(.data$max_end_num) + 1,
+            dplyr::row_number() == 1L | as.numeric(.data$visit_start_date) > dplyr::lag(.data$max_end_num) + gapDays,
             1L,
             0L
           ),
@@ -308,6 +313,8 @@ addIcuStays <- function(
   window = list(c(-365, -1), c(0, 365)),
   icuConceptIds = 32037L,
   icuSpecialtyConceptIds = c(38004500L),
+  gapDays = 1L,
+  collapseGap = NULL,
   countBy = c("days", "records"),
   collapseOverlapping = TRUE,
   nameStyle = "{domain}_{metric}_{window_name}",
@@ -323,6 +330,8 @@ addIcuStays <- function(
     icuConceptIds = icuConceptIds,
     icuSpecialtyConceptIds = icuSpecialtyConceptIds,
     readmissions = FALSE,
+    gapDays = gapDays,
+    collapseGap = collapseGap,
     countBy = countBy,
     collapseOverlapping = collapseOverlapping,
     nameStyle = nameStyle,

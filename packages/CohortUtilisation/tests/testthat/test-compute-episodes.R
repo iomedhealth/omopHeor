@@ -22,6 +22,20 @@ test_that("computeHospitalizationCohorts collapses stays and flags readmissions"
   # Readmission within 30d should be flagged
   p1_readm <- hosp_df |> dplyr::filter(.data$subject_id == 1L, .data$cohort_definition_id == 2L)
   expect_equal(nrow(p1_readm), 1)
+
+  # With gapDays = 20L, Patient 1's two stays (gap = 15 days) merge into 1 continuous hospitalization
+  cdm$hosp_gap20 <- computeHospitalizationCohorts(
+    cdm = cdm,
+    name = "hosp_gap20",
+    visitConceptIds = c(9201L, 8717L, 581379L),
+    icuConceptIds = 32037L,
+    gapDays = 20L
+  )
+  hosp_gap20_df <- cdm$hosp_gap20 |> dplyr::collect()
+  p1_hosp_gap20 <- hosp_gap20_df |> dplyr::filter(.data$subject_id == 1L, .data$cohort_definition_id == 1L)
+  expect_equal(nrow(p1_hosp_gap20), 1)
+  expect_equal(p1_hosp_gap20$cohort_start_date, as.Date("2010-02-01"))
+  expect_equal(p1_hosp_gap20$cohort_end_date, as.Date("2010-02-23"))
 })
 
 test_that("computeInfusionCohorts creates infusion episodes", {

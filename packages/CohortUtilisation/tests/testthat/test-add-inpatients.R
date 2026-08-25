@@ -213,7 +213,7 @@ test_that("addInpatients collapses overlapping stays and contiguous hospitalizat
   cdm <- omopgenerics::insertTable(cdm, name = "target_cohort", table = target)
   cdm$target_cohort <- omopgenerics::newCohortTable(cdm$target_cohort)
 
-  # 1. Collapsed mode (Default)
+  # 1. Collapsed mode (Default: gapDays = 1L)
   res_collapsed <- cdm$target_cohort |>
     addInpatients(
       window = list(followup = c(0, 365)),
@@ -230,6 +230,35 @@ test_that("addInpatients collapses overlapping stays and contiguous hospitalizat
   expect_equal(res_collapsed$inpatient_los_days_followup, 17)
   expect_equal(res_collapsed$inpatient_mean_los_days_followup, 8.5)
   expect_equal(res_collapsed$readmissions_30d_followup, 1)
+
+  # 1b. gapDays = 0L: Stay C (Feb 25-28) and Stay D (Mar 1-5, gap = 1 day) do NOT merge
+  res_gap0 <- cdm$target_cohort |>
+    addInpatients(
+      window = list(followup = c(0, 365)),
+      readmissions = TRUE,
+      gapDays = 0L,
+      collapseOverlapping = TRUE
+    ) |>
+    dplyr::collect()
+
+  # 3 distinct episodes: Feb 1-10 (9d), Feb 25-28 (3d), Mar 1-5 (4d)
+  # Total admissions = 3, total LOS = 16, readmissions 30d = 2 (Feb 25 is 15d from Feb 10; Mar 1 is 1d from Feb 28)
+  expect_equal(res_gap0$inpatient_admissions_followup, 3)
+  expect_equal(res_gap0$inpatient_los_days_followup, 16)
+  expect_equal(res_gap0$readmissions_30d_followup, 2)
+
+  # 1c. collapseGap alias works identically
+  res_alias <- cdm$target_cohort |>
+    addInpatients(
+      window = list(followup = c(0, 365)),
+      readmissions = TRUE,
+      collapseGap = 0L,
+      collapseOverlapping = TRUE
+    ) |>
+    dplyr::collect()
+
+  expect_equal(res_alias$inpatient_admissions_followup, 3)
+  expect_equal(res_alias$inpatient_los_days_followup, 16)
 
   # 2. Uncollapsed mode: collapseOverlapping = FALSE
   res_uncollapsed <- cdm$target_cohort |>
@@ -249,5 +278,30 @@ test_that("addInpatients collapses overlapping stays and contiguous hospitalizat
     addInpatients(cdm$target_cohort, countBy = "invalid"),
     "Argument 'countBy' must be either 'days' or 'records'"
   )
+
+  # 4. Invalid gapDays error
+  expect_error(
+    addInpatients(cdm$target_cohort, gapDays = -1L),
+    "Argument 'gapDays' must be a single non-negative integer"
+  )
+  expect_error(
+    addInpatients(cdm$target_cohort, gapDays = "two"),
+    "Argument 'gapDays' must be a single non-negative integer"
+  )
+  expect_error(
+    addInpatients(cdm$target_cohort, gapDays = 1.5),
+    "Argument 'gapDays' must be a single non-negative integer"
+  )
+
+  # 5. addIcuStays with gapDays
+  res_icu <- cdm$target_cohort |>
+    addIcuStays(
+      window = list(followup = c(0, 365)),
+      gapDays = 1L
+    ) |>
+    dplyr::collect()
+
+  expect_true(all(c("icu_admissions_followup", "icu_los_days_followup") %in% colnames(res_icu)))
+  expect_false(any(grepl("^inpatient_", colnames(res_icu))))
 })
 

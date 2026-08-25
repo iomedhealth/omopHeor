@@ -142,3 +142,24 @@ validateCountBy <- function(countBy = c("days", "records"), collapseOverlapping 
   countBy
 }
 
+#' Validate gapDays and collapseGap arguments
+#'
+#' @param gapDays Integer scalar >= 0. Maximum gap in days between contiguous stays.
+#' @param collapseGap Optional alias for gapDays.
+#' @param call Environment for error reporting.
+#'
+#' @return Validated integer gap threshold.
+#' @noRd
+validateGapDays <- function(gapDays = 1L, collapseGap = NULL, call = parent.frame()) {
+  val <- if (!is.null(collapseGap)) collapseGap else gapDays
+  if (is.null(val) || !is.numeric(val) || length(val) != 1 || is.na(val)) {
+    cli::cli_abort("Argument 'gapDays' must be a single non-negative integer (>= 0).", call = call)
+  }
+  int_val <- as.integer(val)
+  if (int_val < 0 || int_val != val) {
+    cli::cli_abort("Argument 'gapDays' must be a single non-negative integer (>= 0).", call = call)
+  }
+  int_val
+}
+
+

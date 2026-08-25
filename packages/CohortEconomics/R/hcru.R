@@ -20,8 +20,10 @@
 #' @param diagnostics Logical, whether to extract procedures and measurements (default `TRUE`).
 #' @param post_acute Logical, whether to extract post-acute/SNF/hospice care (default `TRUE`).
 #' @param calculate_readmissions Logical, whether to compute 30-day and 90-day readmissions (default `FALSE`).
-#' @param persistence Logical, whether to calculate Proportion of Days Covered (PDC) (default `FALSE`).
-#' @param count_by Character scalar, either `"days"` (count distinct visit dates) or `"records"` (count raw rows) (default `"days"`).
+#' @param persistence Logical, whether to compute treatment persistence (default `FALSE`).
+#' @param count_by Character scalar, either `"days"` or `"records"` (default `"days"`).
+#' @param gap_days Integer scalar >= 0. Maximum gap in days between contiguous stays to collapse into a single episode (default `1L`).
+#' @param gapDays Optional alias for `gap_days`.
 #'
 #' @return An `omopheor_hcru` (`hermes_hcru`) object enriched with `study$costs` and `study$hcru`.
 #'
@@ -37,7 +39,9 @@ extract_hcru <- function(
   post_acute = TRUE,
   calculate_readmissions = FALSE,
   persistence = FALSE,
-  count_by = c("days", "records")
+  count_by = c("days", "records"),
+  gap_days = 1L,
+  gapDays = NULL
 ) {
   # ponytail: database-side filtering by cohort subjects and windowed aggregation
   if (!inherits(study, "omopheor_study") && !inherits(study, "hermes_study") &&
@@ -53,6 +57,15 @@ extract_hcru <- function(
   if (!is.character(cost_field) || length(cost_field) != 1) {
     stop("Argument 'cost_field' must be a single string")
   }
+  gap_val <- if (!is.null(gapDays)) gapDays else gap_days
+  if (is.null(gap_val) || !is.numeric(gap_val) || length(gap_val) != 1 || is.na(gap_val)) {
+    stop("Argument 'gap_days' must be a single non-negative integer")
+  }
+  gap_int <- as.integer(gap_val)
+  if (gap_int < 0 || gap_int != gap_val) {
+    stop("Argument 'gap_days' must be a single non-negative integer (>= 0)")
+  }
+  gap_days <- gap_int
   count_by <- if (is.character(count_by)) tolower(count_by[1]) else "days"
   if (!count_by %in% c("days", "records")) count_by <- "days"
 
@@ -191,7 +204,7 @@ extract_hcru <- function(
       dplyr::mutate(
         max_end_num = cummax(as.numeric(.data$end_date)),
         is_new_ep = dplyr::if_else(
-          dplyr::row_number() == 1L | as.numeric(.data$event_date) > dplyr::lag(.data$max_end_num) + 1,
+          dplyr::row_number() == 1L | as.numeric(.data$event_date) > dplyr::lag(.data$max_end_num) + gap_days,
           1L,
           0L
         ),
@@ -582,6 +595,8 @@ extract_hcru <- function(
 #' @param calculateReadmissions Logical, whether to compute 30-day and 90-day readmissions (default `FALSE`).
 #' @param countBy Character scalar, either `"days"` or `"records"` (default `"days"`).
 #' @param count_by Backward compatible snake_case parameter.
+#' @param gapDays Integer scalar >= 0. Maximum gap in days between contiguous stays to collapse into a single episode (default `1L`).
+#' @param gap_days Backward compatible snake_case parameter.
 #' @export
 extractHcru <- function(
   study,
@@ -595,9 +610,12 @@ extractHcru <- function(
   calculateReadmissions = FALSE,
   persistence = FALSE,
   countBy = c("days", "records"),
-  count_by = NULL
+  gapDays = 1L,
+  count_by = NULL,
+  gap_days = NULL
 ) {
   cb <- if (!is.null(count_by)) count_by else countBy
+  gd <- if (!is.null(gap_days)) gap_days else gapDays
   extract_hcru(
     study = study,
     baseline_window = baselineWindow,
@@ -609,6 +627,7 @@ extractHcru <- function(
     post_acute = postAcute,
     calculate_readmissions = calculateReadmissions,
     persistence = persistence,
-    count_by = cb
+    count_by = cb,
+    gap_days = gd
   )
 }

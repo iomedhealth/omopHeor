@@ -16,7 +16,9 @@ extract_hcru(
   post_acute = TRUE,
   calculate_readmissions = FALSE,
   persistence = FALSE,
-  count_by = c("days", "records")
+  count_by = c("days", "records"),
+  gap_days = 1L,
+  gapDays = NULL
 )
 
 extractHcru(
@@ -31,7 +33,9 @@ extractHcru(
   calculateReadmissions = FALSE,
   persistence = FALSE,
   countBy = c("days", "records"),
-  count_by = NULL
+  gapDays = 1L,
+  count_by = NULL,
+  gap_days = NULL
 )
 }
 \arguments{
@@ -53,9 +57,13 @@ extractHcru(
 
 \item{calculate_readmissions}{Logical, whether to compute 30-day and 90-day readmissions (default \code{FALSE}).}
 
-\item{persistence}{Logical, whether to calculate Proportion of Days Covered (PDC) (default \code{FALSE}).}
+\item{persistence}{Logical, whether to compute treatment persistence (default \code{FALSE}).}
 
 \item{count_by}{Backward compatible snake_case parameter.}
+
+\item{gap_days}{Backward compatible snake_case parameter.}
+
+\item{gapDays}{Integer scalar >= 0. Maximum gap in days between contiguous stays to collapse into a single episode (default \code{1L}).}
 
 \item{baselineWindow}{Relative days from cohort start date defining baseline (default \code{c(-365, -1)}).}
 

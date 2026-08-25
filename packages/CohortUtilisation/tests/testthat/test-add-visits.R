@@ -216,3 +216,79 @@ test_that("addVisits propagates countBy and collapseOverlapping across settings"
   expect_equal(res_records$emergency_visits_followup, 2)
 })
 
+test_that("addVisits propagates gapDays to inpatient settings", {
+  con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+
+  person <- tibble::tibble(
+    person_id = 1L,
+    gender_concept_id = 8507L,
+    year_of_birth = 1980L,
+    race_concept_id = 0L,
+    ethnicity_concept_id = 0L
+  )
+  observation_period <- tibble::tibble(
+    observation_period_id = 1L,
+    person_id = 1L,
+    observation_period_start_date = as.Date("2000-01-01"),
+    observation_period_end_date = as.Date("2025-12-31"),
+    period_type_concept_id = 0L
+  )
+  provider <- tibble::tibble(
+    provider_id = 1L,
+    specialty_concept_id = 38004446L
+  )
+  # Person 1 has 2 contiguous inpatient stays separated by 1 day:
+  # Stay 1: 2010-02-01 to 2010-02-05
+  # Stay 2: 2010-02-06 to 2010-02-10
+  visit_occurrence <- tibble::tibble(
+    visit_occurrence_id = 1:2,
+    person_id = c(1L, 1L),
+    visit_concept_id = c(9201L, 9201L),
+    visit_start_date = as.Date(c("2010-02-01", "2010-02-06")),
+    visit_end_date = as.Date(c("2010-02-05", "2010-02-10")),
+    visit_type_concept_id = c(44818517L, 44818517L),
+    provider_id = c(1L, 1L)
+  )
+
+  DBI::dbWriteTable(con, "person", person)
+  DBI::dbWriteTable(con, "observation_period", observation_period)
+  DBI::dbWriteTable(con, "provider", provider)
+  DBI::dbWriteTable(con, "visit_occurrence", visit_occurrence)
+
+  cdm <- CDMConnector::cdmFromCon(con, cdmSchema = "main", writeSchema = "main")
+
+  target <- tibble::tibble(
+    cohort_definition_id = 1L,
+    subject_id = 1L,
+    cohort_start_date = as.Date("2010-01-01"),
+    cohort_end_date = as.Date("2010-12-31")
+  )
+  cdm <- omopgenerics::insertTable(cdm, name = "target_cohort", table = target)
+  cdm$target_cohort <- omopgenerics::newCohortTable(cdm$target_cohort)
+
+  # Default: gapDays = 1L collapses them into 1 admission and 9 LOS days
+  res_gap1 <- cdm$target_cohort |>
+    addVisits(
+      window = list(followup = c(0, 365)),
+      settings = "inpatient",
+      gapDays = 1L
+    ) |>
+    dplyr::collect()
+
+  expect_equal(res_gap1$inpatient_admissions_followup, 1)
+  expect_equal(res_gap1$inpatient_los_days_followup, 9)
+
+  # gapDays = 0L: does not collapse 1-day separated stays -> 2 admissions, 8 LOS days
+  res_gap0 <- cdm$target_cohort |>
+    addVisits(
+      window = list(followup = c(0, 365)),
+      settings = "inpatient",
+      gapDays = 0L
+    ) |>
+    dplyr::collect()
+
+  expect_equal(res_gap0$inpatient_admissions_followup, 2)
+  expect_equal(res_gap0$inpatient_los_days_followup, 8)
+})
+

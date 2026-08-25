@@ -273,3 +273,33 @@ test_that("extract_hcru deduplicates same-day visits with count_by = 'days' vs '
   expect_equal(p1_foll_rec$total_cost, 225.0)
 })
 
+test_that("extract_hcru collapses inpatient episodes using configurable gap_days", {
+  study <- hermes_test_study()
+
+  # Default: gap_days = 1L. Patient 1 visits on Feb 1-5 and Feb 20-23 (gap = 15 days) remain 2 admissions
+  hcru_gap1 <- extract_hcru(study, gap_days = 1L, calculate_readmissions = TRUE)
+  p1_inp_gap1 <- hcru_gap1$hcru$inpatient |> dplyr::filter(subject_id == 1L, window == "followup")
+  expect_equal(p1_inp_gap1$inpatient_admissions, 2)
+  expect_equal(p1_inp_gap1$inpatient_los_days, 7)
+  expect_equal(p1_inp_gap1$readmissions_30d, 1)
+
+  # With gap_days = 20L: Patient 1 visits (gap = 15 days <= 20) are merged into 1 continuous episode (Feb 1 to Feb 23: 22 days)
+  hcru_gap20 <- extract_hcru(study, gap_days = 20L, calculate_readmissions = TRUE)
+  p1_inp_gap20 <- hcru_gap20$hcru$inpatient |> dplyr::filter(subject_id == 1L, window == "followup")
+  expect_equal(p1_inp_gap20$inpatient_admissions, 1)
+  expect_equal(p1_inp_gap20$inpatient_los_days, 22)
+  expect_equal(p1_inp_gap20$readmissions_30d, 0)
+
+  # camelCase alias gapDays works identically in extractHcru
+  hcru_alias <- extractHcru(study, gapDays = 20L, calculateReadmissions = TRUE)
+  p1_inp_alias <- hcru_alias$hcru$inpatient |> dplyr::filter(subject_id == 1L, window == "followup")
+  expect_equal(p1_inp_alias$inpatient_admissions, 1)
+  expect_equal(p1_inp_alias$inpatient_los_days, 22)
+
+  # Validation tests for invalid gap_days
+  expect_error(extract_hcru(study, gap_days = -1L), "Argument 'gap_days' must be a single non-negative integer")
+  expect_error(extract_hcru(study, gap_days = "invalid"), "Argument 'gap_days' must be a single non-negative integer")
+  expect_error(extract_hcru(study, gap_days = 2.5), "Argument 'gap_days' must be a single non-negative integer")
+})
+
+

@@ -9,7 +9,9 @@ compute_hospitalization_cohorts(
   cdm,
   name,
   visit_concept_ids = c(9201L, 262L, 32037L, 581379L),
-  readmission_window = 30L
+  readmission_window = 30L,
+  collapse_gap = 1L,
+  gap_days = NULL
 )
 
 computeHospitalizationCohorts(
@@ -18,6 +20,8 @@ computeHospitalizationCohorts(
   visitConceptIds = c(9201L, 262L, 581379L),
   icuConceptIds = 32037L,
   readmissionWindow = 30L,
+  gapDays = 1L,
+  collapseGap = NULL,
   readmission_window = NULL
 )
 }
@@ -30,11 +34,19 @@ computeHospitalizationCohorts(
 
 \item{readmission_window}{Backward compatible snake_case parameter.}
 
+\item{collapse_gap}{Maximum gap in days between contiguous stays to collapse into a single episode. Default: \code{1L}.}
+
+\item{gap_days}{Optional alias for \code{collapse_gap}.}
+
 \item{visitConceptIds}{Integer vector of OMOP visit concept IDs. Default: \code{c(9201L, 262L, 581379L)}.}
 
 \item{icuConceptIds}{Integer vector of OMOP ICU visit concept IDs. Default: \code{32037L}.}
 
 \item{readmissionWindow}{Maximum days between previous discharge and next admission. Default: 30.}
+
+\item{gapDays}{Maximum gap in days between contiguous stays to collapse into a single episode. Default: \code{1L}.}
+
+\item{collapseGap}{Optional alias for \code{gapDays}. Default: \code{NULL}.}
 }
 \value{
 An \code{omopgenerics} cohort table with cohort definitions:

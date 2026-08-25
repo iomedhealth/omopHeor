@@ -20,6 +20,8 @@
 #' @param emergencyVisitConceptIds OMOP visit concept IDs for emergency care. Default: `c(9203L, 262L, 581478L)`.
 #' @param icuConceptIds OMOP visit concept IDs for ICU stays. Default: `32037L`.
 #' @param readmissions Logical; whether to compute 30-day and 90-day readmissions for inpatient stays. Default: `FALSE`.
+#' @param gapDays Integer scalar >= 0. Maximum gap in days between contiguous stays to collapse into a single episode. Default: `1L`.
+#' @param collapseGap Optional alias for `gapDays`. Default: `NULL`.
 #' @param countBy Character scalar specifying count granularity: `"days"` to count distinct visit start dates, or `"records"` to count raw database rows. Default: `"days"`.
 #' @param collapseOverlapping Logical; whether to collapse same-day and overlapping visits. If `FALSE`, forces `countBy = "records"`. Default: `TRUE`.
 #' @param name Name of the new table in the write schema. If NULL, a temporary table is returned.
@@ -42,6 +44,8 @@ addVisits <- function(
   emergencyVisitConceptIds = c(9203L, 262L, 581478L),
   icuConceptIds = 32037L,
   readmissions = FALSE,
+  gapDays = 1L,
+  collapseGap = NULL,
   countBy = c("days", "records"),
   collapseOverlapping = TRUE,
   name = NULL
@@ -61,6 +65,7 @@ addVisits <- function(
   clean_window <- validateWindow(window)
   name <- validateName(name)
   specialties <- validateSpecialties(specialties)
+  gapDays <- validateGapDays(gapDays = gapDays, collapseGap = collapseGap)
   countBy <- validateCountBy(countBy = countBy, collapseOverlapping = collapseOverlapping)
 
   res <- x
@@ -77,7 +82,10 @@ addVisits <- function(
       icuSpecialtyConceptIds = icuSpecialtyConceptIds,
       stratifySpecialty = stratifySpecialty,
       specialties = specialties,
-      readmissions = readmissions
+      readmissions = readmissions,
+      gapDays = gapDays,
+      countBy = countBy,
+      collapseOverlapping = collapseOverlapping
     )
   }
 

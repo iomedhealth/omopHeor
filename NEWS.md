@@ -1,3 +1,16 @@
+# omopHeor 0.7.2
+
+## New Features & Enhancements
+
+* **Configurable Episode Gap Threshold (`gapDays`) in Inpatient & Visit Utilization**:
+  * `CohortUtilisation::addInpatients()` & `CohortUtilisation::addIcuStays()`: Added `gapDays = 1L` (with `collapseGap = NULL` alias) allowing users to configure the allowable discharge-to-admission gap (e.g. `gapDays = 0L` for strict overlap only, `gapDays = 1L` for next-day transfers, `gapDays = N` for multi-day washouts).
+  * `CohortUtilisation::addVisits()`: Added `gapDays` and propagated it through to the inpatient domain enricher.
+  * `CohortUtilisation::computeHospitalizationCohorts()` / `compute_hospitalization_cohorts()`: Added `gapDays` / `collapseGap` / `collapse_gap` to control interval collapsing boundaries during cohort generation.
+  * `CohortEconomics::extract_hcru()`: Added `gap_days = 1L` (with `gapDays = NULL` alias) to apply the configurable gap during inpatient episode collapsing and readmission detection.
+  * `CohortUtilisation::validateGapDays()`: Added centralized argument validation for non-negative integers ($\ge 0$).
+
+---
+
 # omopHeor 0.7.1
 
 ## New Features & Enhancements

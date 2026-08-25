@@ -1,1 +1,3 @@
-{"feature_directory":"specs/012-collapse-overlapping-inpatients"}
+{
+  "feature_directory": "specs/013-configurable-gap-days"
+}
