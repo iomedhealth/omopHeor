@@ -15,7 +15,8 @@ extract_hcru(
   diagnostics = TRUE,
   post_acute = TRUE,
   calculate_readmissions = FALSE,
-  persistence = FALSE
+  persistence = FALSE,
+  count_by = c("days", "records")
 )
 
 extractHcru(
@@ -28,7 +29,9 @@ extractHcru(
   diagnostics = TRUE,
   postAcute = TRUE,
   calculateReadmissions = FALSE,
-  persistence = FALSE
+  persistence = FALSE,
+  countBy = c("days", "records"),
+  count_by = NULL
 )
 }
 \arguments{
@@ -52,6 +55,8 @@ extractHcru(
 
 \item{persistence}{Logical, whether to calculate Proportion of Days Covered (PDC) (default \code{FALSE}).}
 
+\item{count_by}{Backward compatible snake_case parameter.}
+
 \item{baselineWindow}{Relative days from cohort start date defining baseline (default \code{c(-365, -1)}).}
 
 \item{followupWindow}{Relative days from cohort start date defining follow-up (default \code{c(0, 365)}).}
@@ -63,6 +68,8 @@ extractHcru(
 \item{postAcute}{Logical, whether to extract post-acute/SNF/hospice care (default \code{TRUE}).}
 
 \item{calculateReadmissions}{Logical, whether to compute 30-day and 90-day readmissions (default \code{FALSE}).}
+
+\item{countBy}{Character scalar, either \code{"days"} or \code{"records"} (default \code{"days"}).}
 }
 \value{
 An \code{omopheor_hcru} (\code{hermes_hcru}) object enriched with \code{study$costs} and \code{study$hcru}.

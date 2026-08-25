@@ -136,3 +136,83 @@ test_that("addVisits supports infinite and NA window bounds with censorDate", {
   expect_true("inpatient_admissions_all_followup" %in% colnames(cohortCensored))
   expect_true("emergency_visits_all_followup" %in% colnames(cohortCensored))
 })
+
+test_that("addVisits propagates countBy and collapseOverlapping across settings", {
+  con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+
+  person <- tibble::tibble(
+    person_id = 1L,
+    gender_concept_id = 8507L,
+    year_of_birth = 1980L,
+    race_concept_id = 0L,
+    ethnicity_concept_id = 0L
+  )
+  observation_period <- tibble::tibble(
+    observation_period_id = 1L,
+    person_id = 1L,
+    observation_period_start_date = as.Date("2000-01-01"),
+    observation_period_end_date = as.Date("2025-12-31"),
+    period_type_concept_id = 0L
+  )
+  provider <- tibble::tibble(
+    provider_id = 1L,
+    specialty_concept_id = 38004446L # GP
+  )
+  # Person 1 has 2 GP visits on 2010-03-01, 2 ED visits on 2010-04-01
+  visit_occurrence <- tibble::tibble(
+    visit_occurrence_id = 1:4,
+    person_id = rep(1L, 4),
+    visit_concept_id = c(9202L, 9202L, 9203L, 9203L),
+    visit_start_date = as.Date(c(
+      "2010-03-01", "2010-03-01",
+      "2010-04-01", "2010-04-01"
+    )),
+    visit_end_date = as.Date(c(
+      "2010-03-01", "2010-03-01",
+      "2010-04-01", "2010-04-01"
+    )),
+    visit_type_concept_id = rep(44818517L, 4),
+    provider_id = rep(1L, 4)
+  )
+
+  DBI::dbWriteTable(con, "person", person)
+  DBI::dbWriteTable(con, "observation_period", observation_period)
+  DBI::dbWriteTable(con, "provider", provider)
+  DBI::dbWriteTable(con, "visit_occurrence", visit_occurrence)
+
+  cdm <- CDMConnector::cdmFromCon(con, cdmSchema = "main", writeSchema = "main")
+
+  target <- tibble::tibble(
+    cohort_definition_id = 1L,
+    subject_id = 1L,
+    cohort_start_date = as.Date("2010-01-01"),
+    cohort_end_date = as.Date("2010-12-31")
+  )
+  cdm <- omopgenerics::insertTable(cdm, name = "target_cohort", table = target)
+  cdm$target_cohort <- omopgenerics::newCohortTable(cdm$target_cohort)
+
+  # Default: countBy = "days"
+  res_days <- cdm$target_cohort |>
+    addVisits(
+      window = list(followup = c(0, 365)),
+      settings = c("outpatient", "emergency")
+    ) |>
+    dplyr::collect()
+
+  expect_equal(res_days$gp_visits_followup, 1)
+  expect_equal(res_days$emergency_visits_followup, 1)
+
+  # countBy = "records"
+  res_records <- cdm$target_cohort |>
+    addVisits(
+      window = list(followup = c(0, 365)),
+      settings = c("outpatient", "emergency"),
+      countBy = "records"
+    ) |>
+    dplyr::collect()
+
+  expect_equal(res_records$gp_visits_followup, 2)
+  expect_equal(res_records$emergency_visits_followup, 2)
+})
+

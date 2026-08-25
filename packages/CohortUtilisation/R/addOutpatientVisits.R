@@ -8,6 +8,8 @@
 #' @param gpSpecialtyConceptIds OMOP provider specialty concept IDs for General Practice. Default: `c(38004446L)`.
 #' @param specialties Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: `NULL`.
 #' @param includeEmergency Logical; whether to include emergency visits. Default: `TRUE`.
+#' @param countBy Character scalar specifying count granularity: `"days"` to count distinct visit start dates, or `"records"` to count raw database rows. Default: `"days"`.
+#' @param collapseOverlapping Logical; whether to collapse same-day and overlapping visits. If `FALSE`, forces `countBy = "records"`. Default: `TRUE`.
 #' @param nameStyle Column naming pattern. Default: `"{setting}_visits_{window_name}"`.
 #' @param name Name of the new table in the write schema. If NULL, a temporary table is returned.
 #'
@@ -22,6 +24,8 @@ addOutpatientVisits <- function(
   gpSpecialtyConceptIds = c(38004446L),
   specialties = NULL,
   includeEmergency = TRUE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{setting}_visits_{window_name}",
   name = NULL
 ) {
@@ -36,6 +40,7 @@ addOutpatientVisits <- function(
   clean_window <- validateWindow(window)
   name <- validateName(name)
   specialties <- validateSpecialties(specialties)
+  countBy <- validateCountBy(countBy = countBy, collapseOverlapping = collapseOverlapping)
 
   gpSpecialtyConceptIds <- as.integer(gpSpecialtyConceptIds)
 
@@ -121,13 +126,13 @@ addOutpatientVisits <- function(
     win_summary <- win_events |>
       dplyr::group_by(.data$subject_id) |>
       dplyr::summarise(
-        ed_cnt = sum(ifelse(.data$is_ed, 1L, 0L), na.rm = TRUE),
-        gp_cnt = sum(ifelse(.data$is_gp, 1L, 0L), na.rm = TRUE),
-        spec_cnt = sum(ifelse(.data$is_spec, 1L, 0L), na.rm = TRUE),
-        other_cnt = sum(ifelse(.data$is_other, 1L, 0L), na.rm = TRUE),
+        ed_cnt = if (countBy == "days") length(unique(.data$visit_start_date[which(.data$is_ed)])) else sum(ifelse(.data$is_ed, 1L, 0L), na.rm = TRUE),
+        gp_cnt = if (countBy == "days") length(unique(.data$visit_start_date[which(.data$is_gp)])) else sum(ifelse(.data$is_gp, 1L, 0L), na.rm = TRUE),
+        spec_cnt = if (countBy == "days") length(unique(.data$visit_start_date[which(.data$is_spec)])) else sum(ifelse(.data$is_spec, 1L, 0L), na.rm = TRUE),
+        other_cnt = if (countBy == "days") length(unique(.data$visit_start_date[which(.data$is_other)])) else sum(ifelse(.data$is_other, 1L, 0L), na.rm = TRUE),
         dplyr::across(
           dplyr::all_of(spec_is_cols),
-          ~ sum(ifelse(.x, 1L, 0L), na.rm = TRUE)
+          ~ if (countBy == "days") length(unique(.data$visit_start_date[which(.x)])) else sum(ifelse(.x, 1L, 0L), na.rm = TRUE)
         ),
         .groups = "drop"
       )

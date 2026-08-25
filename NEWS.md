@@ -1,3 +1,16 @@
+# omopHeor 0.7.0
+
+## New Features & Enhancements
+
+* **Same-Day & Overlapping Visit Deduplication for HCRU**:
+  * `CohortUtilisation::addOutpatientVisits()`: Added `countBy = c("days", "records")` (default: `"days"`) and `collapseOverlapping = TRUE` to count distinct calendar visit dates and eliminate administrative duplicate record overestimation.
+  * `CohortUtilisation::addEmergencyCare()`: Collapses same-day emergency encounters and overlapping care spans by default into distinct emergency presentations.
+  * `CohortUtilisation::addVisits()`: Propagates `countBy` and `collapseOverlapping` across Inpatient, Outpatient, and Emergency care settings in a single call.
+  * `CohortEconomics::extract_hcru()`: Harmonized to calculate distinct visit dates in `study$hcru$patient_summary` and `study$hcru$outpatient` while keeping `study$costs` and `total_cost` 100% exhaustive at the financial event level.
+  * Specialty-stratified deduplication: Outpatient visits calculate distinct dates per specialty independently while maintaining distinct global outpatient visit day totals.
+
+---
+
 # omopHeor 0.6.0
 
 ## CRAN Readiness & Metapackage Renaming

@@ -107,3 +107,88 @@ test_that("addEmergencyCare supports infinite and NA windows", {
 
   expect_equal(resInf, resNa)
 })
+
+test_that("addEmergencyCare deduplicates same-day emergency visits with countBy = 'days' vs 'records'", {
+  con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+
+  person <- tibble::tibble(
+    person_id = 1L,
+    gender_concept_id = 8507L,
+    year_of_birth = 1980L,
+    race_concept_id = 0L,
+    ethnicity_concept_id = 0L
+  )
+  observation_period <- tibble::tibble(
+    observation_period_id = 1L,
+    person_id = 1L,
+    observation_period_start_date = as.Date("2000-01-01"),
+    observation_period_end_date = as.Date("2025-12-31"),
+    period_type_concept_id = 0L
+  )
+  provider <- tibble::tibble(
+    provider_id = c(1L, 2L),
+    specialty_concept_id = c(38004510L, 38004510L)
+  )
+  # Person 1 has 3 emergency visit records on the same day: 2010-04-10, and 1 on 2010-08-20
+  visit_occurrence <- tibble::tibble(
+    visit_occurrence_id = 1:4,
+    person_id = rep(1L, 4),
+    visit_concept_id = rep(9203L, 4),
+    visit_start_date = as.Date(c(
+      "2010-04-10", "2010-04-10", "2010-04-10", # 3 same-day ED records
+      "2010-08-20"                             # 1 distinct ED record
+    )),
+    visit_end_date = as.Date(c(
+      "2010-04-10", "2010-04-10", "2010-04-10",
+      "2010-08-20"
+    )),
+    visit_type_concept_id = rep(44818517L, 4),
+    provider_id = c(1L, 2L, 1L, 1L)
+  )
+
+  DBI::dbWriteTable(con, "person", person)
+  DBI::dbWriteTable(con, "observation_period", observation_period)
+  DBI::dbWriteTable(con, "provider", provider)
+  DBI::dbWriteTable(con, "visit_occurrence", visit_occurrence)
+
+  cdm <- CDMConnector::cdmFromCon(con, cdmSchema = "main", writeSchema = "main")
+
+  target <- tibble::tibble(
+    cohort_definition_id = 1L,
+    subject_id = 1L,
+    cohort_start_date = as.Date("2010-01-01"),
+    cohort_end_date = as.Date("2010-12-31")
+  )
+  cdm <- omopgenerics::insertTable(cdm, name = "target_cohort", table = target)
+  cdm$target_cohort <- omopgenerics::newCohortTable(cdm$target_cohort)
+
+  # 1. Default: countBy = "days"
+  res_days <- cdm$target_cohort |>
+    addEmergencyCare(window = list(followup = c(0, 365))) |>
+    dplyr::collect()
+
+  # Should deduplicate 3 same-day records to 1 + 1 on 2010-08-20 = 2
+  expect_equal(res_days$emergency_visits_followup, 2)
+
+  # 2. countBy = "records"
+  res_records <- cdm$target_cohort |>
+    addEmergencyCare(window = list(followup = c(0, 365)), countBy = "records") |>
+    dplyr::collect()
+
+  expect_equal(res_records$emergency_visits_followup, 4)
+
+  # 3. collapseOverlapping = FALSE
+  res_nocollapse <- cdm$target_cohort |>
+    addEmergencyCare(window = list(followup = c(0, 365)), collapseOverlapping = FALSE) |>
+    dplyr::collect()
+
+  expect_equal(res_nocollapse$emergency_visits_followup, 4)
+
+  # 4. Error on invalid countBy
+  expect_error(
+    addEmergencyCare(cdm$target_cohort, countBy = "wrong"),
+    "Argument 'countBy' must be either 'days' or 'records'"
+  )
+})
+

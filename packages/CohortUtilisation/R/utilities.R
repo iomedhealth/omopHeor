@@ -113,3 +113,32 @@ validateSpecialties <- function(specialties, call = parent.frame()) {
   }
   lapply(specialties, as.integer)
 }
+
+#' Validate countBy and collapseOverlapping arguments
+#'
+#' @param countBy Character scalar or vector specifying count granularity ('days' or 'records').
+#' @param collapseOverlapping Optional logical flag. If FALSE, forces countBy to 'records'.
+#' @param call Environment for error reporting.
+#'
+#' @return Normalized countBy string ('days' or 'records').
+#' @noRd
+validateCountBy <- function(countBy = c("days", "records"), collapseOverlapping = TRUE, call = parent.frame()) {
+  if (!is.null(collapseOverlapping) && is.logical(collapseOverlapping) && length(collapseOverlapping) == 1) {
+    if (!collapseOverlapping) {
+      return("records")
+    }
+  }
+  if (is.null(countBy)) {
+    return("days")
+  }
+  if (is.character(countBy)) {
+    countBy <- tolower(countBy[1])
+  } else {
+    cli::cli_abort("Argument 'countBy' must be either 'days' or 'records'.", call = call)
+  }
+  if (!countBy %in% c("days", "records")) {
+    cli::cli_abort("Argument 'countBy' must be either 'days' or 'records'.", call = call)
+  }
+  countBy
+}
+

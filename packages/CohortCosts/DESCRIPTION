@@ -1,6 +1,6 @@
 Package: CohortCosts
 Title: Direct Medical Cost Extraction and Health Economics Costing on OMOP CDM
-Version: 0.6.1
+Version: 0.7.0
 Authors@R: c(
     person(given = "Gabriel",
            family = "Maeztu",

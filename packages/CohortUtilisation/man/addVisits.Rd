@@ -20,6 +20,8 @@ addVisits(
   emergencyVisitConceptIds = c(9203L, 262L, 581478L),
   icuConceptIds = 32037L,
   readmissions = FALSE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   name = NULL
 )
 }
@@ -53,6 +55,10 @@ addVisits(
 \item{icuConceptIds}{OMOP visit concept IDs for ICU stays. Default: \code{32037L}.}
 
 \item{readmissions}{Logical; whether to compute 30-day and 90-day readmissions for inpatient stays. Default: \code{FALSE}.}
+
+\item{countBy}{Character scalar specifying count granularity: \code{"days"} to count distinct visit start dates, or \code{"records"} to count raw database rows. Default: \code{"days"}.}
+
+\item{collapseOverlapping}{Logical; whether to collapse same-day and overlapping visits. If \code{FALSE}, forces \code{countBy = "records"}. Default: \code{TRUE}.}
 
 \item{name}{Name of the new table in the write schema. If NULL, a temporary table is returned.}
 }

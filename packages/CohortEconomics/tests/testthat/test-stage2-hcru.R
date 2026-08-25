@@ -187,3 +187,89 @@ test_that("T014 [US3] extract_hcru extracts pharmacotherapy, diagnostics, and po
     "total_cost"
   ) %in% summary_cols))
 })
+
+test_that("extract_hcru deduplicates same-day visits with count_by = 'days' vs 'records'", {
+  con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+
+  person <- tibble::tibble(
+    person_id = c(1L, 2L),
+    gender_concept_id = c(8507L, 8532L),
+    year_of_birth = c(1980L, 1975L),
+    race_concept_id = c(0L, 0L),
+    ethnicity_concept_id = c(0L, 0L)
+  )
+  observation_period <- tibble::tibble(
+    observation_period_id = c(1L, 2L),
+    person_id = c(1L, 2L),
+    observation_period_start_date = as.Date(c("2000-01-01", "2000-01-01")),
+    observation_period_end_date = as.Date(c("2025-12-31", "2025-12-31")),
+    period_type_concept_id = c(0L, 0L)
+  )
+  provider <- tibble::tibble(
+    provider_id = 1L,
+    specialty_concept_id = 38004446L # GP
+  )
+  # Person 1 has 3 GP visits on 2010-03-01
+  visit_occurrence <- tibble::tibble(
+    visit_occurrence_id = 1:3,
+    person_id = rep(1L, 3),
+    visit_concept_id = rep(9202L, 3),
+    visit_start_date = rep(as.Date("2010-03-01"), 3),
+    visit_end_date = rep(as.Date("2010-03-01"), 3),
+    visit_type_concept_id = rep(44818517L, 3),
+    provider_id = rep(1L, 3)
+  )
+  cost <- tibble::tibble(
+    cost_id = 1:3,
+    cost_event_id = 1:3,
+    cost_domain_id = rep("Visit", 3),
+    cost_type_concept_id = rep(32814L, 3),
+    total_paid = c(100.0, 50.0, 75.0), # Total cost: 225.0
+    total_charge = c(120.0, 60.0, 90.0)
+  )
+
+  DBI::dbWriteTable(con, "person", person)
+  DBI::dbWriteTable(con, "observation_period", observation_period)
+  DBI::dbWriteTable(con, "provider", provider)
+  DBI::dbWriteTable(con, "visit_occurrence", visit_occurrence)
+  DBI::dbWriteTable(con, "cost", cost)
+
+  cdm <- CDMConnector::cdmFromCon(con, cdmSchema = "main", writeSchema = "main")
+
+  target <- tibble::tibble(
+    cohort_definition_id = 1L,
+    subject_id = 1L,
+    cohort_start_date = as.Date("2010-01-01"),
+    cohort_end_date = as.Date("2010-12-31")
+  )
+  comparator <- tibble::tibble(
+    cohort_definition_id = 1L,
+    subject_id = 2L,
+    cohort_start_date = as.Date("2010-01-01"),
+    cohort_end_date = as.Date("2010-12-31")
+  )
+  cdm <- omopgenerics::insertTable(cdm, name = "target_cohort", table = target)
+  cdm$target_cohort <- omopgenerics::newCohortTable(cdm$target_cohort)
+  cdm <- omopgenerics::insertTable(cdm, name = "comparator_cohort", table = comparator)
+  cdm$comparator_cohort <- omopgenerics::newCohortTable(cdm$comparator_cohort)
+  cdm <- omopgenerics::insertTable(cdm, name = "outcome_cohort", table = target)
+  cdm$outcome_cohort <- omopgenerics::newCohortTable(cdm$outcome_cohort)
+
+  study <- init(cdm, "target_cohort", "comparator_cohort", "outcome_cohort")
+
+  # 1. Default: count_by = "days"
+  hcru_days <- extract_hcru(study, count_by = "days")
+  p1_foll_days <- hcru_days$hcru$patient_summary |> dplyr::filter(subject_id == 1L, window == "followup")
+
+  expect_equal(p1_foll_days$gp_visits, 1) # 1 unique visit day
+  expect_equal(p1_foll_days$total_cost, 225.0) # All 3 cost records summed exhaustively
+
+  # 2. count_by = "records"
+  hcru_records <- extract_hcru(study, count_by = "records")
+  p1_foll_rec <- hcru_records$hcru$patient_summary |> dplyr::filter(subject_id == 1L, window == "followup")
+
+  expect_equal(p1_foll_rec$gp_visits, 3) # 3 raw database records
+  expect_equal(p1_foll_rec$total_cost, 225.0)
+})
+

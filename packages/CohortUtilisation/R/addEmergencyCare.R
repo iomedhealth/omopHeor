@@ -14,6 +14,8 @@
 #' @param emergencySpecialtyConceptIds OMOP provider specialty concept IDs for emergency medicine. Default: `c(38004510L)`.
 #' @param stratifySpecialty Logical; whether to compute specialty breakdown. Default: `FALSE`.
 #' @param specialties Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: `NULL`.
+#' @param countBy Character scalar specifying count granularity: `"days"` to count distinct visit start dates/episodes, or `"records"` to count raw database rows. Default: `"days"`.
+#' @param collapseOverlapping Logical; whether to collapse same-day and overlapping visits. If `FALSE`, forces `countBy = "records"`. Default: `TRUE`.
 #' @param nameStyle Column naming pattern. Default: `"emergency_visits_{window_name}"`.
 #' @param name Name of the new table in the write schema. If NULL, a temporary table is returned.
 #'
@@ -29,6 +31,8 @@ addEmergencyCare <- function(
   emergencySpecialtyConceptIds = c(38004510L),
   stratifySpecialty = FALSE,
   specialties = NULL,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "emergency_visits_{window_name}",
   name = NULL
 ) {
@@ -43,6 +47,7 @@ addEmergencyCare <- function(
   clean_window <- validateWindow(window)
   name <- validateName(name)
   specialties <- validateSpecialties(specialties)
+  countBy <- validateCountBy(countBy = countBy, collapseOverlapping = collapseOverlapping)
 
   emergencyVisitConceptIds <- as.integer(emergencyVisitConceptIds)
   emergencySpecialtyConceptIds <- if (!is.null(emergencySpecialtyConceptIds)) as.integer(emergencySpecialtyConceptIds) else integer()
@@ -123,10 +128,10 @@ addEmergencyCare <- function(
     win_summary <- win_events |>
       dplyr::group_by(.data$subject_id) |>
       dplyr::summarise(
-        er_cnt = dplyr::n(),
+        er_cnt = if (countBy == "days") length(unique(.data$visit_start_date)) else dplyr::n(),
         dplyr::across(
           dplyr::all_of(spec_cols),
-          ~ sum(ifelse(.x, 1L, 0L), na.rm = TRUE)
+          ~ if (countBy == "days") length(unique(.data$visit_start_date[which(.x)])) else sum(ifelse(.x, 1L, 0L), na.rm = TRUE)
         ),
         .groups = "drop"
       )

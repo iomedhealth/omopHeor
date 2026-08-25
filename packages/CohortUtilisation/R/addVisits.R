@@ -20,6 +20,8 @@
 #' @param emergencyVisitConceptIds OMOP visit concept IDs for emergency care. Default: `c(9203L, 262L, 581478L)`.
 #' @param icuConceptIds OMOP visit concept IDs for ICU stays. Default: `32037L`.
 #' @param readmissions Logical; whether to compute 30-day and 90-day readmissions for inpatient stays. Default: `FALSE`.
+#' @param countBy Character scalar specifying count granularity: `"days"` to count distinct visit start dates, or `"records"` to count raw database rows. Default: `"days"`.
+#' @param collapseOverlapping Logical; whether to collapse same-day and overlapping visits. If `FALSE`, forces `countBy = "records"`. Default: `TRUE`.
 #' @param name Name of the new table in the write schema. If NULL, a temporary table is returned.
 #'
 #' @return The cohort table `x` with added multi-setting visit metric columns.
@@ -40,6 +42,8 @@ addVisits <- function(
   emergencyVisitConceptIds = c(9203L, 262L, 581478L),
   icuConceptIds = 32037L,
   readmissions = FALSE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   name = NULL
 ) {
   # ponytail: modular composition of addInpatients, addOutpatientVisits, and addEmergencyCare
@@ -57,6 +61,7 @@ addVisits <- function(
   clean_window <- validateWindow(window)
   name <- validateName(name)
   specialties <- validateSpecialties(specialties)
+  countBy <- validateCountBy(countBy = countBy, collapseOverlapping = collapseOverlapping)
 
   res <- x
 
@@ -87,7 +92,9 @@ addVisits <- function(
       stratifySpecialty = stratifySpecialty,
       gpSpecialtyConceptIds = gpSpecialtyConceptIds,
       specialties = specialties,
-      includeEmergency = include_em
+      includeEmergency = include_em,
+      countBy = countBy,
+      collapseOverlapping = collapseOverlapping
     )
   }
 
@@ -101,7 +108,9 @@ addVisits <- function(
       emergencyVisitConceptIds = emergencyVisitConceptIds,
       emergencySpecialtyConceptIds = emergencySpecialtyConceptIds,
       stratifySpecialty = stratifySpecialty,
-      specialties = specialties
+      specialties = specialties,
+      countBy = countBy,
+      collapseOverlapping = collapseOverlapping
     )
   }
 

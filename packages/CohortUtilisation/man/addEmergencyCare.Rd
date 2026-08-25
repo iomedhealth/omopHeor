@@ -15,6 +15,8 @@ addEmergencyCare(
   emergencySpecialtyConceptIds = c(38004510L),
   stratifySpecialty = FALSE,
   specialties = NULL,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "emergency_visits_{window_name}",
   name = NULL
 )
@@ -28,6 +30,8 @@ addEmergency(
   emergencySpecialtyConceptIds = c(38004510L),
   stratifySpecialty = FALSE,
   specialties = NULL,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "emergency_visits_{window_name}",
   name = NULL
 )
@@ -41,6 +45,8 @@ addEmergencyVisits(
   emergencySpecialtyConceptIds = c(38004510L),
   stratifySpecialty = FALSE,
   specialties = NULL,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "emergency_visits_{window_name}",
   name = NULL
 )
@@ -61,6 +67,10 @@ addEmergencyVisits(
 \item{stratifySpecialty}{Logical; whether to compute specialty breakdown. Default: \code{FALSE}.}
 
 \item{specialties}{Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: \code{NULL}.}
+
+\item{countBy}{Character scalar specifying count granularity: \code{"days"} to count distinct visit start dates/episodes, or \code{"records"} to count raw database rows. Default: \code{"days"}.}
+
+\item{collapseOverlapping}{Logical; whether to collapse same-day and overlapping visits. If \code{FALSE}, forces \code{countBy = "records"}. Default: \code{TRUE}.}
 
 \item{nameStyle}{Column naming pattern. Default: \code{"emergency_visits_{window_name}"}.}
 

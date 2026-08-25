@@ -21,6 +21,7 @@
 #' @param post_acute Logical, whether to extract post-acute/SNF/hospice care (default `TRUE`).
 #' @param calculate_readmissions Logical, whether to compute 30-day and 90-day readmissions (default `FALSE`).
 #' @param persistence Logical, whether to calculate Proportion of Days Covered (PDC) (default `FALSE`).
+#' @param count_by Character scalar, either `"days"` (count distinct visit dates) or `"records"` (count raw rows) (default `"days"`).
 #'
 #' @return An `omopheor_hcru` (`hermes_hcru`) object enriched with `study$costs` and `study$hcru`.
 #'
@@ -35,7 +36,8 @@ extract_hcru <- function(
   diagnostics = TRUE,
   post_acute = TRUE,
   calculate_readmissions = FALSE,
-  persistence = FALSE
+  persistence = FALSE,
+  count_by = c("days", "records")
 ) {
   # ponytail: database-side filtering by cohort subjects and windowed aggregation
   if (!inherits(study, "omopheor_study") && !inherits(study, "hermes_study") &&
@@ -51,6 +53,8 @@ extract_hcru <- function(
   if (!is.character(cost_field) || length(cost_field) != 1) {
     stop("Argument 'cost_field' must be a single string")
   }
+  count_by <- if (is.character(count_by)) tolower(count_by[1]) else "days"
+  if (!count_by %in% c("days", "records")) count_by <- "days"
 
   cdm <- study$cdm
   target_name <- study$target_cohort
@@ -229,10 +233,10 @@ extract_hcru <- function(
   out_sum <- out_windowed |>
     dplyr::group_by(.data$subject_id, .data$window) |>
     dplyr::summarise(
-      emergency_visits = sum(ifelse(.data$is_ed, 1L, 0L), na.rm = TRUE),
-      gp_visits = sum(ifelse(.data$is_gp, 1L, 0L), na.rm = TRUE),
-      specialist_visits = sum(ifelse(.data$is_spec, 1L, 0L), na.rm = TRUE),
-      other_outpatient_visits = sum(ifelse(.data$is_other, 1L, 0L), na.rm = TRUE),
+      emergency_visits = if (count_by == "days") length(unique(.data$event_date[which(.data$is_ed)])) else sum(ifelse(.data$is_ed, 1L, 0L), na.rm = TRUE),
+      gp_visits = if (count_by == "days") length(unique(.data$event_date[which(.data$is_gp)])) else sum(ifelse(.data$is_gp, 1L, 0L), na.rm = TRUE),
+      specialist_visits = if (count_by == "days") length(unique(.data$event_date[which(.data$is_spec)])) else sum(ifelse(.data$is_spec, 1L, 0L), na.rm = TRUE),
+      other_outpatient_visits = if (count_by == "days") length(unique(.data$event_date[which(.data$is_other)])) else sum(ifelse(.data$is_other, 1L, 0L), na.rm = TRUE),
       .groups = "drop"
     )
 
@@ -521,6 +525,8 @@ extract_hcru <- function(
 #' @param visitDomains Visit categories to extract from `visit_occurrence`.
 #' @param postAcute Logical, whether to extract post-acute/SNF/hospice care (default `TRUE`).
 #' @param calculateReadmissions Logical, whether to compute 30-day and 90-day readmissions (default `FALSE`).
+#' @param countBy Character scalar, either `"days"` or `"records"` (default `"days"`).
+#' @param count_by Backward compatible snake_case parameter.
 #' @export
 extractHcru <- function(
   study,
@@ -532,8 +538,11 @@ extractHcru <- function(
   diagnostics = TRUE,
   postAcute = TRUE,
   calculateReadmissions = FALSE,
-  persistence = FALSE
+  persistence = FALSE,
+  countBy = c("days", "records"),
+  count_by = NULL
 ) {
+  cb <- if (!is.null(count_by)) count_by else countBy
   extract_hcru(
     study = study,
     baseline_window = baselineWindow,
@@ -544,6 +553,7 @@ extractHcru <- function(
     diagnostics = diagnostics,
     post_acute = postAcute,
     calculate_readmissions = calculateReadmissions,
-    persistence = persistence
+    persistence = persistence,
+    count_by = cb
   )
 }

@@ -13,6 +13,8 @@ addOutpatientVisits(
   gpSpecialtyConceptIds = c(38004446L),
   specialties = NULL,
   includeEmergency = TRUE,
+  countBy = c("days", "records"),
+  collapseOverlapping = TRUE,
   nameStyle = "{setting}_visits_{window_name}",
   name = NULL
 )
@@ -33,6 +35,10 @@ addOutpatientVisits(
 \item{specialties}{Optional named list of integer vectors of OMOP specialty concept IDs for granular specialty breakdown. Default: \code{NULL}.}
 
 \item{includeEmergency}{Logical; whether to include emergency visits. Default: \code{TRUE}.}
+
+\item{countBy}{Character scalar specifying count granularity: \code{"days"} to count distinct visit start dates, or \code{"records"} to count raw database rows. Default: \code{"days"}.}
+
+\item{collapseOverlapping}{Logical; whether to collapse same-day and overlapping visits. If \code{FALSE}, forces \code{countBy = "records"}. Default: \code{TRUE}.}
 
 \item{nameStyle}{Column naming pattern. Default: \code{"{setting}_visits_{window_name}"}.}
 
