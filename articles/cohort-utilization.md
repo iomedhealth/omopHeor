@@ -83,9 +83,9 @@ cdm$hosp_episodes |>
 #> # A tibble: 4 × 4
 #>   cohort_definition_id subject_id cohort_start_date cohort_end_date
 #>                  <int>      <int> <date>            <date>         
-#> 1                    1          2 2010-03-10        2010-03-15     
+#> 1                    1          1 2010-02-01        2010-02-05     
 #> 2                    1          1 2010-02-20        2010-02-23     
-#> 3                    1          1 2010-02-01        2010-02-05     
+#> 3                    1          2 2010-03-10        2010-03-15     
 #> 4                    2          1 2010-02-20        2010-02-23
 ```
 
