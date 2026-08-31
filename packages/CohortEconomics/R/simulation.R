@@ -20,8 +20,26 @@
 #'
 #' @export
 simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03, n_samples = 100) {
-  # ponytail: Simple pure-R Markov PSA engine using Dirichlet/Gamma/Beta approximations
-  # skipped: hesim/heemod dependency for the core engine, to avoid heavy external object wrangling. Add if complex parametric survival is needed.
+  # ==============================================================================
+  # Probabilistic Sensitivity Analysis (PSA) Markov Simulation Engine
+  # ==============================================================================
+  #
+  #  PSA Sampling & Markov Cycle Rollout:
+  #
+  #   For sample s in 1..n_samples:
+  #     1. Draw State Costs from Gamma(shape, scale)
+  #     2. Draw State Utilities from Beta(alpha, beta)
+  #     3. Draw Transition Matrices via Row-Wise Dirichlet Sampling
+  #     4. For strategy in c(Target, Comparator):
+  #          Initialize state trace: current_state = [1, 0] (Start at State_Baseline)
+  #          For cycle t in 1..n_cycles:
+  #            current_state = current_state %*% s_trans
+  #            Discount factor d_t = (1 + discount_rate)^(-t * cycle_length)
+  #            Accumulate cycle costs:   current_state . s_costs * d_t
+  #            Accumulate cycle QALYs:   current_state . s_utils * (cycle_length / 365.25) * d_t
+  #
+  #   Outputs: Total Discounted Costs & QALYs per strategy across all PSA iterations.
+  # ==============================================================================
 
   n_cycles <- round(time_horizon * (365.25 / 30)) # 30-day cycles
 
@@ -33,7 +51,7 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
   if (is.null(strategies)) strategies <- paste0("Strategy_", 1:length(traj_obj$matrices))
   n_strategies <- length(strategies)
 
-  # State space
+  # Determine discrete Markov health state space
   if (length(traj_obj$matrices) > 0 && !is.null(rownames(traj_obj$matrices[[1]]))) {
     states <- rownames(traj_obj$matrices[[1]])
   } else if (!is.null(traj_obj$costs$health_state)) {
@@ -43,12 +61,11 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
   }
   n_states <- length(states)
 
-
-  # Pre-allocate results
+  # Pre-allocate results containers
   res_costs <- data.frame(sample = integer(), strategy_id = integer(), costs = numeric())
   res_qalys <- data.frame(sample = integer(), strategy_id = integer(), qalys = numeric())
 
-  # Method of moments for Gamma distribution (costs)
+  # Step 1: Fit method of moments for Gamma distribution on health state costs
   cost_means <- numeric(n_states)
   cost_ses <- numeric(n_states)
   for (i in seq_along(states)) {
@@ -65,7 +82,7 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
   cost_shape <- ifelse(cost_ses > 0, (cost_means / cost_ses)^2, NA)
   cost_scale <- ifelse(cost_ses > 0, (cost_ses^2) / cost_means, NA)
 
-  # Default utilities if not provided
+  # Step 2: Configure state utility values and Beta priors
   if (is.null(traj_obj$utilities) || nrow(traj_obj$utilities) == 0) {
     util_df <- data.frame(
       health_state = states,
@@ -76,7 +93,7 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
     util_df <- traj_obj$utilities
   }
 
-  # Method of moments for Beta distribution (utilities)
+  # Helper: method of moments for Beta distribution on health utilities
   get_beta_params <- function(mu, se) {
     if (is.na(se) || se == 0) {
       return(list(a = NA, b = NA))
@@ -89,10 +106,12 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
     list(a = mu * tmp, b = (1 - mu) * tmp)
   }
 
+  # Step 3: Compute continuous annual discount factor per cycle
   discount_vec <- 1 / ((1 + discount_rate)^((1:n_cycles) * (30 / 365.25)))
 
+  # Step 4: Run Monte Carlo PSA simulation iterations
   for (s in 1:n_samples) {
-    # Sample costs
+    # Draw sample costs from Gamma distributions
     s_costs <- numeric(n_states)
     for (i in 1:n_states) {
       if (is.na(cost_shape[i])) {
@@ -102,7 +121,7 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
       }
     }
 
-    # Sample utilities
+    # Draw sample utilities from Beta distributions
     s_utils <- numeric(n_states)
     for (i in 1:n_states) {
       bp <- get_beta_params(util_df$mean_utility[i], util_df$se_utility[i])
@@ -113,11 +132,11 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
       }
     }
 
-    # Simulate each strategy
+    # Step 5: Simulate each strategy over defined Markov cycles
     for (strat_idx in 1:n_strategies) {
       trans_mat <- traj_obj$matrices[[strategies[strat_idx]]]
 
-      # Sample transition matrix (simplified row-wise Dirichlet using Gamma)
+      # Sample transition matrix (Dirichlet via Gamma draws)
       s_trans <- trans_mat
       for (r in 1:nrow(s_trans)) {
         alphas <- s_trans[r, ] * 100
@@ -127,7 +146,7 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
       }
 
       state_dist <- matrix(0, nrow = n_cycles, ncol = n_states)
-      current_state <- c(1, rep(0, n_states - 1)) # Start in state 1
+      current_state <- c(1, rep(0, n_states - 1)) # Start in Baseline state
 
       total_cost <- 0
       total_qaly <- 0
@@ -148,6 +167,7 @@ simulate_economics <- function(traj_obj, time_horizon = 10, discount_rate = 0.03
     }
   }
 
+  # Step 6: Package results into hermes_sim S3 container
   new_omopheor_sim(
     list(
       traj_obj = traj_obj,

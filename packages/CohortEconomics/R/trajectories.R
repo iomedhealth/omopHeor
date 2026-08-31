@@ -16,8 +16,30 @@
 #'
 #' @export
 compile_trajectories <- function(ps_obj) {
-  # ponytail: minimal dynamic matrix derivation and cost aggregation
-  # skipped: full Cohort2Trajectory pipeline. Add when real event table integration is needed.
+  # ==============================================================================
+  # Markov State Trajectory & State-Cost Compilation Architecture
+  # ==============================================================================
+  #
+  #  State Space & Transitions:
+  #
+  #                     +------------------------+
+  #                     |     State_Baseline     | <------+
+  #                     | (Pre-outcome HCRU/Cost)|        | (1 - p_outcome)
+  #                     +-----------+------------+        |
+  #                                 |                     |
+  #                      p_outcome  |  (Transition)       |
+  #                                 v                     |
+  #                     +------------------------+        |
+  #                     |     State_Outcome      |--------+
+  #                     | (Post-outcome HCRU/Cost| (Absorbing State in Base Model)
+  #                     +------------------------+
+  #
+  #  Workflow:
+  #    1. Partition matched cohort into target (treatment = 1) & comparator (0).
+  #    2. Compute empirical transition probabilities from baseline to outcome state.
+  #    3. Aggregate patient-level total costs by health state.
+  #    4. Derive mean and standard error of costs for probabilistic sensitivity analysis.
+  # ==============================================================================
 
   matrices <- list()
   costs_summary <- data.frame()
@@ -25,7 +47,7 @@ compile_trajectories <- function(ps_obj) {
   if (!is.null(ps_obj$matched_pop) && is.data.frame(ps_obj$matched_pop)) {
     pop <- ps_obj$matched_pop
 
-    # Calculate transition probabilities
+    # Helper: calculate 2x2 state transition probability matrix from observed events
     calc_trans <- function(df) {
       if (nrow(df) == 0) {
         return(matrix(c(1, 0, 0, 1),
@@ -46,6 +68,7 @@ compile_trajectories <- function(ps_obj) {
         n_outcome_30d <- 0
       }
 
+      # Compute 30-day cycle transition rate
       p_outcome <- n_outcome_30d / n_total
       p_baseline <- 1 - p_outcome
 
@@ -62,6 +85,7 @@ compile_trajectories <- function(ps_obj) {
       )
     }
 
+    # Step 1: Stratify by treatment group
     if ("treatment" %in% colnames(pop)) {
       target_pop <- pop[pop$treatment == 1, ]
       comp_pop <- pop[pop$treatment == 0, ]
@@ -70,10 +94,11 @@ compile_trajectories <- function(ps_obj) {
       comp_pop <- pop[0, ]
     }
 
+    # Step 2: Calculate empirical transition matrices
     matrices$target_transition <- calc_trans(target_pop)
     matrices$comparator_transition <- calc_trans(comp_pop)
 
-    # Cost aggregation
+    # Step 3: Aggregate health-state specific costs and standard errors
     if (!is.null(ps_obj$hcru_obj$costs)) {
       costs <- ps_obj$hcru_obj$costs
       if (nrow(costs) > 0 && "total_paid" %in% colnames(costs)) {
@@ -104,6 +129,7 @@ compile_trajectories <- function(ps_obj) {
     }
   }
 
+  # Step 4: Construct and return hermes_trajectories S3 object
   new_omopheor_trajectories(
     list(
       ps_obj = ps_obj,

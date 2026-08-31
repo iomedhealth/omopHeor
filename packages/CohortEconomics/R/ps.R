@@ -19,14 +19,26 @@
 #' @export
 #' @importFrom stats predict
 fit_ps <- function(hcru_obj, ...) {
-  # ponytail: minimal CohortMethod/Cyclops wrapper and PatientProfiles extraction
-  # skipped: full CohortMethodData structure. Add when direct OHDSI tool compatibility is requested.
+  # ==============================================================================
+  # Propensity Score Model Fitting (Stage 3: Causal Adjustment)
+  # ==============================================================================
+  #
+  #  Covariates & Target/Comparator Union:
+  #    Target Cohort (T=1)     Comparator Cohort (T=0)
+  #            |                         |
+  #            v                         v
+  #      PatientProfiles (Age, Sex, Baseline Covariates)
+  #            |
+  #            v
+  #     Cyclops Regularized Logistic Regression:
+  #       P(Treatment = 1 | Covariates) -> propensity_score
+  # ==============================================================================
 
   cm_data <- hcru_obj$cm_data
   model_fit <- NULL
 
   if (is.null(cm_data) && !is.null(hcru_obj$cdm) && !is.null(hcru_obj$target_cohort) && !is.null(hcru_obj$comparator_cohort)) {
-    # Extract covariates
+    # Step 1: Extract baseline demographics for Target cohort
     target <- hcru_obj$cdm[[hcru_obj$target_cohort]] |>
       dplyr::select("subject_id", "cohort_start_date") |>
       PatientProfiles::addAge() |>
@@ -34,6 +46,7 @@ fit_ps <- function(hcru_obj, ...) {
       dplyr::mutate(treatment = 1) |>
       dplyr::collect()
 
+    # Step 2: Extract baseline demographics for Comparator cohort
     comp <- hcru_obj$cdm[[hcru_obj$comparator_cohort]] |>
       dplyr::select("subject_id", "cohort_start_date") |>
       PatientProfiles::addAge() |>
@@ -41,10 +54,11 @@ fit_ps <- function(hcru_obj, ...) {
       dplyr::mutate(treatment = 0) |>
       dplyr::collect()
 
+    # Step 3: Union populations and encode categorical covariates
     cm_data <- dplyr::bind_rows(target, comp) |>
       dplyr::mutate(sex_num = ifelse(.data$sex == "Female", 1, 0))
 
-    # Add outcome_date if available
+    # Step 4: Attach first outcome occurrence date if outcome cohort exists
     if (!is.null(hcru_obj$outcome_cohort) && hcru_obj$outcome_cohort %in% names(hcru_obj$cdm)) {
       outcomes <- hcru_obj$cdm[[hcru_obj$outcome_cohort]] |>
         dplyr::select(subject_id = "subject_id", outcome_date = "cohort_start_date") |>
@@ -57,6 +71,7 @@ fit_ps <- function(hcru_obj, ...) {
         dplyr::left_join(outcomes, by = "subject_id")
     }
 
+    # Step 5: Fit regularized logistic regression via Cyclops and predict propensity scores
     if (nrow(cm_data) > 0) {
       cyclops_data <- Cyclops::createCyclopsData(
         treatment ~ age + sex_num,
@@ -75,6 +90,7 @@ fit_ps <- function(hcru_obj, ...) {
     )
   }
 
+  # Step 6: Construct and return hermes_ps S3 object
   new_omopheor_ps(
     list(
       cm_data = cm_data,
@@ -104,12 +120,22 @@ fit_ps <- function(hcru_obj, ...) {
 #'
 #' @export
 adjust_ps <- function(ps_obj, caliper = 0.2, ...) {
-  # ponytail: minimal caliper matching
-  # skipped: MatchIt or exact nearest-neighbor. Add when OHDSI MatchOnPs isn't sufficient or dependencies expand.
+  # ==============================================================================
+  # Greedy Nearest-Neighbor Caliper Matching Algorithm
+  # ==============================================================================
+  #
+  #  Target Patients (T=1):      [ P1: PS=0.42 ]    [ P2: PS=0.78 ]
+  #                                     |                  |
+  #  Caliper Distance (|PS_T - PS_C| <= 0.20):             |
+  #                                     |                  |
+  #  Comparator Pool (T=0):      [ C1: PS=0.45 ]    [ C2: PS=0.99 (Discarded) ]
+  #                                     |
+  #  Matched Cohort:             (P1 <---> C1 matched pair)
+  # ==============================================================================
 
   matched <- data.frame()
   if (inherits(ps_obj$model, "cyclopsFit")) {
-    # Simple greedy caliper matching on propensity score
+    # Step 1: Identify target and comparator pools
     t_idx <- which(ps_obj$cm_data$treatment == 1)
     c_idx <- which(ps_obj$cm_data$treatment == 0)
 
@@ -120,6 +146,7 @@ adjust_ps <- function(ps_obj, caliper = 0.2, ...) {
       matched_c_idx <- rep(NA, length(t_idx))
       available_c <- rep(TRUE, length(c_idx))
 
+      # Step 2: Perform 1:1 nearest-neighbor matching without replacement within caliper
       for (i in seq_along(t_idx)) {
         ps_t <- t_ps[i]
         diffs <- abs(c_ps - ps_t)
@@ -131,6 +158,7 @@ adjust_ps <- function(ps_obj, caliper = 0.2, ...) {
         }
       }
 
+      # Step 3: Extract matched subset
       valid <- !is.na(matched_c_idx)
       t_matched <- t_idx[valid]
       c_matched <- c_idx[matched_c_idx[valid]]

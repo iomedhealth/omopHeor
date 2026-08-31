@@ -27,7 +27,29 @@ compute_hospitalization_cohorts <- function(
   collapse_gap = 1L,
   gap_days = NULL
 ) {
-  # ponytail: interval collapsing via cumulative max end date and lagged boundary detection
+  # ==============================================================================
+  # Inpatient Episode Collapsing & Readmission Architecture
+  # ==============================================================================
+  #
+  #  Raw Visits:      [ Visit 1 ]   [ Visit 2 ]          [ Visit 3 ]
+  #                      |               |                    |
+  #  Overlap / Gap:      +-- gap <= 1d --+                    |
+  #                      v                                    v
+  #  Collapsed Ep:    [     Episode 1 (LOS)     ]        [ Episode 2 ]
+  #                                             \______  ____/
+  #                                                    \/
+  #  Readmission Check:                     gap <= readmission_window (e.g. 30d)?
+  #                                         --> YES => Marked as Readmission (id=2)
+  #
+  #  In-Database Interval Collapsing (dbplyr window functions):
+  #    1. Group by patient (subject_id) and order by start_date, end_date.
+  #    2. Track running maximum end date: max_end_so_far = cummax(cohort_end_date).
+  #    3. Detect episode boundary: if row_number == 1 or start_date > lag(max_end) + gap,
+  #       flag is_new_episode = 1, else 0.
+  #    4. Group by subject_id & cumsum(is_new_episode) to aggregate [min(start), max(end)].
+  # ==============================================================================
+
+  # Validate inputs and harmonize parameters
   omopgenerics::assertCharacter(name, length = 1)
   omopgenerics::assertClass(cdm, "cdm_reference")
   visit_concept_ids <- as.integer(visit_concept_ids)
@@ -37,7 +59,7 @@ compute_hospitalization_cohorts <- function(
 
   prefix <- omopgenerics::tmpPrefix()
 
-  # 1. Extract & clean visit spans
+  # Step 1: Extract inpatient visits and sanitize invalid/missing end dates
   raw_visits <- cdm[["visit_occurrence"]] |>
     dplyr::filter(.data$visit_concept_id %in% .env$visit_concept_ids) |>
     dplyr::select(
@@ -46,6 +68,7 @@ compute_hospitalization_cohorts <- function(
       cohort_end_date = "visit_end_date"
     ) |>
     dplyr::mutate(
+      # If end date is missing or precedes start date, default to start date
       cohort_end_date = dplyr::case_when(
         is.na(.data$cohort_end_date) ~ .data$cohort_start_date,
         .data$cohort_end_date < .data$cohort_start_date ~ .data$cohort_start_date,
@@ -54,7 +77,7 @@ compute_hospitalization_cohorts <- function(
     ) |>
     dplyr::compute(name = paste0(prefix, "raw_vis"), temporary = FALSE, overwrite = TRUE)
 
-  # 2. Cumulative max tracking for overlap collapse
+  # Step 2: Track cumulative maximum end date within patient history
   cum_spans <- raw_visits |>
     dplyr::group_by(.data$subject_id) |>
     dbplyr::window_order(.data$cohort_start_date, .data$cohort_end_date) |>
@@ -63,7 +86,7 @@ compute_hospitalization_cohorts <- function(
     ) |>
     dplyr::compute(name = paste0(prefix, "cum_spans"), temporary = FALSE, overwrite = TRUE)
 
-  # 3. Mark episode boundaries & assign episode IDs
+  # Step 3: Identify discrete episode boundaries using gap threshold & collapse overlapping spans
   episodes <- cum_spans |>
     dplyr::group_by(.data$subject_id) |>
     dbplyr::window_order(.data$cohort_start_date, .data$cohort_end_date) |>
@@ -85,7 +108,7 @@ compute_hospitalization_cohorts <- function(
     dplyr::select("subject_id", "cohort_start_date", "cohort_end_date") |>
     dplyr::compute(name = paste0(prefix, "collapsed"), temporary = FALSE, overwrite = TRUE)
 
-  # 4. Identify readmissions
+  # Step 4: Identify readmission episodes occurring within the washout window after previous discharge
   readm <- episodes |>
     dplyr::group_by(.data$subject_id) |>
     dbplyr::window_order(.data$cohort_start_date) |>
@@ -99,18 +122,20 @@ compute_hospitalization_cohorts <- function(
     dplyr::mutate(cohort_definition_id = 2L) |>
     dplyr::select("cohort_definition_id", "subject_id", "cohort_start_date", "cohort_end_date")
 
+  # Step 5: Format primary hospitalization episodes (cohort_definition_id = 1)
   hosp <- episodes |>
     dplyr::mutate(cohort_definition_id = 1L) |>
     dplyr::select("cohort_definition_id", "subject_id", "cohort_start_date", "cohort_end_date")
 
+  # Step 6: Combine hospitalization and readmission cohorts into target table
   cohort_table <- hosp |>
     dplyr::union_all(readm) |>
     dplyr::compute(name = name, temporary = FALSE, overwrite = TRUE)
 
-  # Cleanup intermediates
+  # Cleanup temporary database tables
   omopgenerics::dropSourceTable(cdm = cdm, name = dplyr::starts_with(prefix))
 
-  # Build cohort metadata
+  # Build cohort metadata and return validated cohort table
   cohort_set <- dplyr::tibble(
     cohort_definition_id = c(1L, 2L),
     cohort_name = c("hospitalization", "readmission")

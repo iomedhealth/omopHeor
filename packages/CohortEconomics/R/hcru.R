@@ -43,7 +43,44 @@ extract_hcru <- function(
   gap_days = 1L,
   gapDays = NULL
 ) {
-  # ponytail: database-side filtering by cohort subjects and windowed aggregation
+  # ==============================================================================
+  # 5-Domain HCRU & Direct Medical Cost Extraction Architecture
+  # ==============================================================================
+  #
+  #  OMOP Data Sources:
+  #    +------------------+  +------------------+  +------------------+
+  #    | visit_occurrence |  |  drug_exposure   |  | procedure / meas |
+  #    +--------+---------+  +--------+---------+  +--------+---------+
+  #             |                     |                     |
+  #             +---------------------+---------------------+
+  #                                   |
+  #                                   v
+  #                   +-------------------------------+
+  #                   |  Temporal Alignment to Windows|
+  #                   |  Baseline [-365,-1] | FU [0,365]|
+  #                   +---------------+---------------+
+  #                                   |
+  #         +-------------------------+-------------------------+
+  #         |                                                   |
+  #         v                                                   v
+  #  +-------------------------------+                 +-------------------------------+
+  #  |   5 Clinical HCRU Domains     |                 |  OMOP COST Table Linkage      |
+  #  | 1. Inpatient / ICU (LOS, Readm)                 | - Direct medical costs tagged |
+  #  | 2. Outpatient (GP / Spec / ED)|                 |   to health state             |
+  #  | 3. Pharmacotherapy (Fills/PDC)|                 | - Polymorphic join via        |
+  #  | 4. Procedures & Diagnostics   |                 |   cost_domain_id & event_id   |
+  #  | 5. Post-Acute SNF / Hospice   |                 +---------------+---------------+
+  #  +---------------+---------------+                                 |
+  #                  |                                                 |
+  #                  +-----------------------+-------------------------+
+  #                                          |
+  #                                          v
+  #                         +---------------------------------+
+  #                         | Enriched hermes_hcru S3 Object  |
+  #                         +---------------------------------+
+  # ==============================================================================
+
+  # Validate study input and parameter types
   if (!inherits(study, "omopheor_study") && !inherits(study, "hermes_study") &&
       !inherits(study, "omopheor_hcru") && !inherits(study, "hermes_hcru")) {
     stop("Argument 'study' must be an omopheor_study or omopheor_hcru object")
@@ -73,7 +110,7 @@ extract_hcru <- function(
   target_name <- study$target_cohort
   comp_name <- study$comparator_cohort
 
-  # 1. Extract study cohort patients and index dates
+  # Step 1: Extract target, comparator, and outcome cohort timelines
   target_df <- if (!is.null(target_name) && target_name %in% names(cdm)) {
     cdm[[target_name]] |>
       dplyr::select(subject_id = "subject_id", cohort_start_date = "cohort_start_date", cohort_end_date = "cohort_end_date") |>

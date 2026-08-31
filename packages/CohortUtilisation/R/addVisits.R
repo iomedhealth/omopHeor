@@ -50,7 +50,36 @@ addVisits <- function(
   collapseOverlapping = TRUE,
   name = NULL
 ) {
-  # ponytail: modular composition of addInpatients, addOutpatientVisits, and addEmergencyCare
+  # ==============================================================================
+  # Multi-Setting Visit Utilization Composition Architecture
+  # ==============================================================================
+  #
+  #                          +-------------------------+
+  #                          |       Study Cohort      |
+  #                          +------------+------------+
+  #                                       |
+  #         +-----------------------------+-----------------------------+
+  #         |                             |                             |
+  #         v                             v                             v
+  #  +---------------+             +---------------+             +---------------+
+  #  |   Inpatient   |             |   Outpatient  |             |   Emergency   |
+  #  |  addInpatients|             |addOutpatient..|             |addEmergency.. |
+  #  +-------+-------+             +-------+-------+             +-------+-------+
+  #          |                             |                             |
+  #          | - LOS & mean LOS            | - GP Visits                 | - ED Admissions
+  #          | - ICU Stays                 | - Specialist Visits         | - ED Specialties
+  #          | - 30d/90d Readmissions      | - Specialty Strata          |
+  #          | - Episode collapsing        | - Same-day collapsing       | - Same-day collapsing
+  #          |                             |                             |
+  #          +-----------------------------+-----------------------------+
+  #                                       |
+  #                                       v
+  #                          +-------------------------+
+  #                          |  Enriched Cohort Table  |
+  #                          +-------------------------+
+  # ==============================================================================
+
+  # Validate base cohort reference and requested settings
   if (!inherits(x, "cdm_table") && !inherits(x, "cohort_table") && !inherits(x, "tbl_dbi")) {
     cli::cli_abort("Argument 'x' must be a cdm_table or cohort_table.")
   }
@@ -60,6 +89,7 @@ addVisits <- function(
     cli::cli_abort("Argument 'settings' must be a subset of c('inpatient', 'outpatient', 'emergency').")
   }
 
+  # Validate and normalize parameters
   indexDate <- validateIndexDate(indexDate, x)
   censorDate <- validateCensorDate(censorDate, x)
   clean_window <- validateWindow(window)
@@ -70,7 +100,7 @@ addVisits <- function(
 
   res <- x
 
-  # 1. Inpatient Setting
+  # Step 1: Inpatient Setting (Hospitalizations, ICU Stays, Readmissions, LOS)
   if ("inpatient" %in% settings) {
     res <- addInpatients(
       x = res,
@@ -89,7 +119,7 @@ addVisits <- function(
     )
   }
 
-  # 2. Outpatient Setting
+  # Step 2: Outpatient Setting (GP, Specialist, and Specialty Strata)
   if ("outpatient" %in% settings) {
     include_em <- !("emergency" %in% settings)
     res <- addOutpatientVisits(
@@ -106,7 +136,7 @@ addVisits <- function(
     )
   }
 
-  # 3. Emergency Setting
+  # Step 3: Emergency Setting (ED Visits and Emergency Specialties)
   if ("emergency" %in% settings) {
     res <- addEmergencyCare(
       x = res,
@@ -122,6 +152,7 @@ addVisits <- function(
     )
   }
 
+  # Step 4: Persist output to write schema if target name provided
   if (!is.null(name)) {
     cdm <- omopgenerics::cdmReference(res)
     cdm <- omopgenerics::insertTable(cdm = cdm, name = name, table = res |> dplyr::collect(), overwrite = TRUE)

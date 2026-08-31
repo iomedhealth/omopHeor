@@ -21,7 +21,40 @@ addCosts <- function(
   nameStyle = "cost_{domain}_{window_name}",
   name = NULL
 ) {
-  # ponytail: polymorphic linkage of cost table to clinical domain events with 0-fill
+  # ==============================================================================
+  # Polymorphic OMOP COST Table Linkage Architecture
+  # ==============================================================================
+  #
+  #                       +---------------------------------------+
+  #                       |            OMOP COST Table            |
+  #                       |  (cost_event_id, cost_domain_id, ...) |
+  #                       +-------------------+-------------------+
+  #                                           |
+  #              +----------------------------+----------------------------+
+  #              |                            |                            |
+  #              v                            v                            v
+  #    cost_domain_id = 'Visit'     cost_domain_id = 'Drug'     cost_domain_id = 'Procedure'
+  #              |                            |                            |
+  #              v                            v                            v
+  #    visit_occurrence_id          drug_exposure_id            procedure_occurrence_id
+  #    [visit_occurrence]           [drug_exposure]             [procedure_occurrence]
+  #              |                            |                            |
+  #              +----------------------------+----------------------------+
+  #                                           |
+  #                                           v
+  #                       +---------------------------------------+
+  #                       | Temporal Window Matching & Aggregation|
+  #                       | [-365, -1] Baseline | [0, 365] Followup|
+  #                       +-------------------+-------------------+
+  #                                           |
+  #                                           v
+  #                       +---------------------------------------+
+  #                       |  Cost Metrics Attached to Cohort Table|
+  #                       |  (cost_inpatient_*, cost_drug_*, etc.)|
+  #                       +---------------------------------------+
+  # ==============================================================================
+
+  # Validate table references and parameters
   if (!inherits(x, "cdm_table") && !inherits(x, "cohort_table") && !inherits(x, "tbl_dbi")) {
     cli::cli_abort("Argument 'x' must be a cdm_table or cohort_table.")
   }
@@ -36,6 +69,7 @@ addCosts <- function(
   x_cols <- colnames(x)
   person_col <- if ("person_id" %in% x_cols) "person_id" else "subject_id"
 
+  # Step 1: Collect base study cohort
   cohort_df <- x |> dplyr::collect()
   if (nrow(cohort_df) == 0) {
     return(x)
@@ -43,6 +77,7 @@ addCosts <- function(
 
   cohort_sub_ids <- unique(cohort_df[[person_col]])
 
+  # Step 2: Handle missing or empty OMOP cost table gracefully
   if (!"cost" %in% names(cdm)) {
     cli::cli_warn("Missing 'cost' table in CDM. Populating cost columns with 0.0.")
     cost_events <- tibble::tibble(
@@ -62,7 +97,7 @@ addCosts <- function(
       cost_raw <- cost_raw |> dplyr::select(-dplyr::any_of("person_id"))
       linked_list <- list()
 
-      # Condition
+      # Step 3a: Link Condition-related costs
       if ("condition_occurrence" %in% names(cdm)) {
         c_df <- cdm$condition_occurrence |>
           dplyr::filter(.data$person_id %in% cohort_sub_ids) |>
@@ -75,7 +110,7 @@ addCosts <- function(
         linked_list <- c(linked_list, list(c_costs))
       }
 
-      # Visit (Inpatient vs Outpatient)
+      # Step 3b: Link Visit-related costs (Inpatient vs Outpatient partition)
       if ("visit_occurrence" %in% names(cdm)) {
         v_df <- cdm$visit_occurrence |>
           dplyr::filter(.data$person_id %in% cohort_sub_ids) |>
@@ -91,7 +126,7 @@ addCosts <- function(
         linked_list <- c(linked_list, list(v_costs))
       }
 
-      # Drug
+      # Step 3c: Link Pharmacy / Drug-related costs
       if ("drug_exposure" %in% names(cdm)) {
         d_df <- cdm$drug_exposure |>
           dplyr::filter(.data$person_id %in% cohort_sub_ids) |>
@@ -104,7 +139,7 @@ addCosts <- function(
         linked_list <- c(linked_list, list(d_costs))
       }
 
-      # Procedure
+      # Step 3d: Link Procedure / Diagnostic costs
       if ("procedure_occurrence" %in% names(cdm)) {
         p_df <- cdm$procedure_occurrence |>
           dplyr::filter(.data$person_id %in% cohort_sub_ids) |>
@@ -117,6 +152,7 @@ addCosts <- function(
         linked_list <- c(linked_list, list(p_costs))
       }
 
+      # Step 4: Union all linked cost streams
       cost_events <- if (length(linked_list) > 0) {
         dplyr::bind_rows(linked_list) |>
           dplyr::select("person_id", "event_date", "cost_domain", "cost_val")
@@ -131,11 +167,13 @@ addCosts <- function(
 
   res_list <- list(cohort_df)
 
+  # Step 5: Match cost events to temporal observation windows
   for (win_name in names(clean_window)) {
     win_range <- clean_window[[win_name]]
     w_start <- win_range[1]
     w_end <- win_range[2]
 
+    # Filter cost records occurring within patient-specific observation interval
     win_events <- cohort_df |>
       dplyr::inner_join(cost_events, by = c("subject_id" = "person_id")) |>
       dplyr::mutate(
@@ -149,6 +187,7 @@ addCosts <- function(
           .data$event_date <= .data$actual_end_dt
       )
 
+    # Step 5b: Sum costs by domain and calculate total direct medical costs
     win_summary <- win_events |>
       dplyr::group_by(.data$subject_id) |>
       dplyr::summarise(
@@ -175,6 +214,7 @@ addCosts <- function(
     res_list <- c(res_list, list(win_summary))
   }
 
+  # Step 6: Join window summaries and zero-fill cohort patients with no incurred costs
   final_df <- res_list[[1]]
   for (k in 2:length(res_list)) {
     final_df <- final_df |>
@@ -186,6 +226,7 @@ addCosts <- function(
     final_df[[col]] <- dplyr::coalesce(final_df[[col]], 0.0)
   }
 
+  # Step 7: Write back to database and preserve cohort metadata
   table_name <- if (!is.null(name)) name else omopgenerics::uniqueTableName(omopgenerics::tmpPrefix())
   cdm <- omopgenerics::insertTable(cdm = cdm, name = table_name, table = final_df, overwrite = TRUE)
   if (inherits(x, "cohort_table")) {

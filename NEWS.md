@@ -1,3 +1,14 @@
+# omopHeor 0.7.3
+
+## Documentation & Developer Experience
+
+* **Inline Architecture Diagrams & Pipeline Documentation**:
+  * Added developer-facing inline ASCII diagrams and step-by-step comments across key algorithms in `CohortUtilisation`, `CohortCosts`, and `CohortEconomics`.
+  * Diagrams illustrate in-database interval collapsing, multi-window temporal alignment, polymorphic OMOP `COST` table linkage, Markov state trajectory transitions, and Monte Carlo PSA cycle rollouts.
+  * Inline comments are maintained using `#` (standard comments) so they do not leak into roxygen `.Rd` or `pkgdown` user-facing documentation.
+
+---
+
 # omopHeor 0.7.2
 
 ## New Features & Enhancements

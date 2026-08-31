@@ -38,7 +38,30 @@ addInpatients <- function(
   nameStyle = "{domain}_{metric}_{window_name}",
   name = NULL
 ) {
-  # ponytail: windowed dbplyr query against visit_occurrence with 0-fill left join
+  # ==============================================================================
+  # Multi-Window Inpatient & ICU Utilization Pipeline
+  # ==============================================================================
+  #
+  #  Patient Timeline:
+  #        Baseline Window [-365, -1]          Follow-up Window [0, 365]
+  #    <--------------------------------|---------------------------------->
+  #                                   Index Date
+  #                                     (t0)
+  #        [ Inpatient Stay 1 ]                     [ Inpatient Stay 2 ]
+  #                |                                         |
+  #                v                                         v
+  #       inpatient_los_m365_to_m1                 inpatient_los_0_to_365
+  #       inpatient_admissions_m365_to_m1          inpatient_admissions_0_to_365
+  #
+  #  Episode Collapsing & ICU Stratification Flow:
+  #    1. Filter visit_occurrence by patient cohort & concept IDs (general + ICU).
+  #    2. Tag ICU stays by visit_concept_id or provider specialty.
+  #    3. For countBy = "days", collapse contiguous stays within gapDays tolerance.
+  #    4. Compute stay metrics (admissions, total LOS, mean LOS, 30d/90d readmissions).
+  #    5. Left-join windowed metrics back to base cohort table with zero-fill.
+  # ==============================================================================
+
+  # Input validation & normalization
   if (!inherits(x, "cdm_table") && !inherits(x, "cohort_table") && !inherits(x, "tbl_dbi")) {
     cli::cli_abort("Argument 'x' must be a cdm_table or cohort_table.")
   }
@@ -60,11 +83,13 @@ addInpatients <- function(
   x_cols <- colnames(x)
   person_col <- if ("person_id" %in% x_cols) "person_id" else "subject_id"
 
+  # Step 1: Collect base cohort members
   cohort_df <- x |> dplyr::collect()
   if (nrow(cohort_df) == 0) {
     return(x)
   }
 
+  # Step 2: Retrieve provider specialty mapping for ICU or specialty stratification
   provider_df <- if ("provider" %in% names(cdm)) {
     cdm$provider |>
       dplyr::select("provider_id", "specialty_concept_id") |>
@@ -73,6 +98,7 @@ addInpatients <- function(
     tibble::tibble(provider_id = integer(), specialty_concept_id = integer())
   }
 
+  # Step 3: Extract relevant inpatient visits for cohort patients
   visit_df <- if ("visit_occurrence" %in% names(cdm)) {
     cdm$visit_occurrence |>
       dplyr::filter(.data$person_id %in% !!unique(cohort_df[[person_col]]) &
@@ -97,6 +123,7 @@ addInpatients <- function(
   visit_df <- visit_df |>
     dplyr::left_join(provider_df, by = "provider_id")
 
+  # Tag specialty columns if requested
   if (!is.null(specialties) && length(specialties) > 0) {
     for (s_name in names(specialties)) {
       s_ids <- as.integer(specialties[[s_name]])
@@ -107,7 +134,7 @@ addInpatients <- function(
 
   spec_cols <- if (!is.null(specialties)) paste0("is_spec_", names(specialties)) else character()
 
-  # Process metrics per window
+  # Step 4: Process utilization metrics across defined temporal windows
   res_list <- list(cohort_df)
 
   for (win_name in names(clean_window)) {
@@ -115,6 +142,7 @@ addInpatients <- function(
     w_start <- win_range[1]
     w_end <- win_range[2]
 
+    # Align visits to temporal window and handle censoring
     win_events <- cohort_df |>
       dplyr::inner_join(visit_df, by = c("subject_id" = "person_id")) |>
       dplyr::mutate(
@@ -135,7 +163,7 @@ addInpatients <- function(
       )
 
     if (countBy == "days" && nrow(win_events) > 0) {
-      # Interval collapsing for overlapping/contiguous stays
+      # Step 4a: Collapse overlapping and contiguous stays into distinct hospitalization episodes
       ordered_stays <- win_events |>
         dplyr::arrange(.data$subject_id, .data$visit_start_date, .data$end_dt) |>
         dplyr::group_by(.data$subject_id) |>
@@ -165,6 +193,7 @@ addInpatients <- function(
           .groups = "drop"
         )
 
+      # Step 4b: Calculate 30-day and 90-day readmissions between collapsed episodes
       if (readmissions && nrow(episodes) > 0) {
         episodes <- episodes |>
           dplyr::arrange(.data$subject_id, .data$ep_start) |>
@@ -181,6 +210,7 @@ addInpatients <- function(
         episodes$readm_90 <- 0L
       }
 
+      # Step 4c: Aggregate patient-level metrics for this window
       win_summary <- episodes |>
         dplyr::group_by(.data$subject_id) |>
         dplyr::summarise(
@@ -201,6 +231,7 @@ addInpatients <- function(
           icu_mean_los = ifelse(.data$icu_adm > 0, .data$icu_los / .data$icu_adm, 0)
         )
     } else {
+      # Raw uncollapsed record counting path (countBy = "records")
       if (readmissions && nrow(win_events) > 0) {
         win_events <- win_events |>
           dplyr::arrange(.data$subject_id, .data$visit_start_date) |>
@@ -238,7 +269,7 @@ addInpatients <- function(
         )
     }
 
-    # Naming
+    # Step 5: Format standardized window column names
     c_inp_adm <- paste0("inpatient_admissions_", win_name)
     c_inp_los <- paste0("inpatient_los_days_", win_name)
     c_inp_mean_los <- paste0("inpatient_mean_los_days_", win_name)
@@ -272,6 +303,7 @@ addInpatients <- function(
     res_list <- c(res_list, list(win_summary))
   }
 
+  # Step 6: Join all window summaries to base cohort and zero-fill missing metrics
   final_df <- res_list[[1]]
   for (k in 2:length(res_list)) {
     final_df <- final_df |>
@@ -283,6 +315,7 @@ addInpatients <- function(
     final_df[[col]] <- dplyr::coalesce(final_df[[col]], 0)
   }
 
+  # Step 7: Save to database table and preserve cohort metadata
   table_name <- if (!is.null(name)) name else omopgenerics::uniqueTableName(omopgenerics::tmpPrefix())
   cdm <- omopgenerics::insertTable(cdm = cdm, name = table_name, table = final_df, overwrite = TRUE)
   if (inherits(x, "cohort_table")) {

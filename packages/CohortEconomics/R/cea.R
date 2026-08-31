@@ -17,24 +17,54 @@
 #'
 #' @export
 run_cea <- function(sim_obj) {
-  # Support both sim_obj and legacy hermes_sim argument
+  # ==============================================================================
+  # Cost-Effectiveness Analysis (Stage 6: Decision Analysis)
+  # ==============================================================================
+  #
+  #  Cost-Effectiveness Plane & Decision Matrix:
+  #
+  #                    Incremental Cost (\Delta C)
+  #                                ^
+  #            Quadrant II         |        Quadrant I
+  #            (Dominated)         |    (Trade-off: ICER < \lambda)
+  #            Higher Cost,        |    Higher Cost,
+  #            Fewer QALYs         |    More QALYs
+  #                                |
+  #        <-----------------------+-----------------------> Incremental QALYs (\Delta E)
+  #                                |
+  #            Quadrant III        |        Quadrant IV
+  #    (Trade-off: Savings)        |        (Dominant)
+  #            Lower Cost,         |        Lower Cost,
+  #            Fewer QALYs         |        More QALYs
+  #                                v
+  #
+  #  Metrics Derived:
+  #    - ICER = \Delta C / \Delta E
+  #    - Net Monetary Benefit (NMB) = \lambda * \Delta E - \Delta C
+  #    - CEAC Curve: P(NMB > 0 | \lambda = WTP)
+  # ==============================================================================
+
+  # Validate simulation object input
   hermes_sim <- sim_obj
   if (is.null(hermes_sim$hesim_ce)) {
     stop("sim_obj must contain a hesim_ce object")
   }
 
-  # ponytail: xtabs for one-liner reshape without tidyr dependency
+  # Step 1: Reshape simulated PSA sample costs and QALYs into matrix format (sample x strategy)
   c_mat <- unclass(stats::xtabs(costs ~ sample + strategy_id, data = hermes_sim$hesim_ce$costs))
   e_mat <- unclass(stats::xtabs(qalys ~ sample + strategy_id, data = hermes_sim$hesim_ce$qalys))
 
-  # Clean up xtabs attributes to prevent BCEA warnings
+  # Step 2: Clean up call attributes to prevent BCEA formatting warnings
   attr(c_mat, "call") <- NULL
   attr(e_mat, "call") <- NULL
 
+  # Step 3: Run Bayesian Cost-Effectiveness Analysis via BCEA engine
   bcea_res <- BCEA::bcea(e = e_mat, c = c_mat)
 
   out <- hermes_sim
   out$cea_results <- bcea_res
+
+  # Step 4: Return enriched hermes_cea object
   new_omopheor_cea(out)
 }
 

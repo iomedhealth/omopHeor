@@ -1,6 +1,6 @@
 Package: CohortUtilisation
 Title: Healthcare Resource Utilization on OMOP CDM Cohorts
-Version: 0.7.2
+Version: 0.7.3
 Authors@R: c(
     person(given = "Gabriel",
            family = "Maeztu",
