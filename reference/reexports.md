@@ -40,8 +40,10 @@ to see their documentation.
   [`addProcedures()`](https://rdrr.io/pkg/CohortUtilisation/man/addProcedures.html),
   [`addVisits()`](https://rdrr.io/pkg/CohortUtilisation/man/addVisits.html),
   [`compute_hospitalization_cohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/compute_hospitalization_cohorts.html),
+  [`compute_visit_cohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/computeVisitCohorts.html),
   [`computeHospitalizationCohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/compute_hospitalization_cohorts.html),
   [`computeInfusionCohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/computeInfusionCohorts.html),
+  [`computeVisitCohorts()`](https://rdrr.io/pkg/CohortUtilisation/man/computeVisitCohorts.html),
   [`plotUtilization()`](https://rdrr.io/pkg/CohortUtilisation/man/plotUtilization.html),
   [`summariseUtilization()`](https://rdrr.io/pkg/CohortUtilisation/man/summariseUtilization.html),
   [`tableUtilization()`](https://rdrr.io/pkg/CohortUtilisation/man/tableUtilization.html)
