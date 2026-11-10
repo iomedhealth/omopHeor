@@ -11,6 +11,11 @@
 #' @param readmission_window Maximum days between previous discharge and next admission. Default: 30.
 #' @param collapse_gap Maximum gap in days between contiguous stays to collapse into a single episode. Default: `1L`.
 #' @param gap_days Optional alias for `collapse_gap`.
+#' @param study_cohort_table Optional cohort table name (or `cohort_table`) in `cdm` used to pre-filter visits to each subject's follow-up window (`[index_date, censor_date]`) before collapsing episodes. Default: `NULL`.
+#' @param index_date Date column in `study_cohort_table` marking start of follow-up. Default: `"cohort_start_date"`.
+#' @param censor_date Optional date column in `study_cohort_table` marking end of follow-up. Default: `"cohort_end_date"`.
+#' @param exclude_icu_specialty Logical; if `TRUE`, excludes visits whose provider specialty is in `icu_specialty_concept_ids` (matching `addHospitalizations()` general inpatient definition). Default: `FALSE`.
+#' @param icu_specialty_concept_ids Integer vector of OMOP provider specialty concept IDs for ICU. Default: `c(38004500L)`.
 #'
 #' @note For in-database Healthcare Resource Utilization (HCRU) characterization on existing study cohorts, prefer \code{\link{addInpatients}}.
 #'
@@ -25,7 +30,12 @@ compute_hospitalization_cohorts <- function(
   visit_concept_ids = c(9201L, 262L, 32037L, 581379L),
   readmission_window = 30L,
   collapse_gap = 1L,
-  gap_days = NULL
+  gap_days = NULL,
+  study_cohort_table = NULL,
+  index_date = "cohort_start_date",
+  censor_date = "cohort_end_date",
+  exclude_icu_specialty = FALSE,
+  icu_specialty_concept_ids = c(38004500L)
 ) {
   # ==============================================================================
   # Inpatient Episode Collapsing & Readmission Architecture
@@ -56,12 +66,26 @@ compute_hospitalization_cohorts <- function(
   readmission_window <- as.integer(readmission_window)
   gap_val <- if (!is.null(gap_days)) gap_days else collapse_gap
   collapse_gap <- validateGapDays(gapDays = gap_val)
+  icu_specialty_concept_ids <- if (!is.null(icu_specialty_concept_ids)) as.integer(icu_specialty_concept_ids) else integer()
 
   prefix <- omopgenerics::tmpPrefix()
 
   # Step 1: Extract inpatient visits and sanitize invalid/missing end dates
-  raw_visits <- cdm[["visit_occurrence"]] |>
-    dplyr::filter(.data$visit_concept_id %in% .env$visit_concept_ids) |>
+  vis_tbl <- cdm[["visit_occurrence"]] |>
+    dplyr::filter(.data$visit_concept_id %in% .env$visit_concept_ids)
+
+  if (isTRUE(exclude_icu_specialty) && length(icu_specialty_concept_ids) > 0 && "provider" %in% names(cdm)) {
+    vis_tbl <- vis_tbl |>
+      dplyr::left_join(
+        cdm[["provider"]] |> dplyr::select("provider_id", "specialty_concept_id"),
+        by = "provider_id"
+      ) |>
+      dplyr::filter(
+        is.na(.data$specialty_concept_id) | !(.data$specialty_concept_id %in% .env$icu_specialty_concept_ids)
+      )
+  }
+
+  raw_visits <- vis_tbl |>
     dplyr::select(
       subject_id = "person_id",
       cohort_start_date = "visit_start_date",
@@ -74,7 +98,44 @@ compute_hospitalization_cohorts <- function(
         .data$cohort_end_date < .data$cohort_start_date ~ .data$cohort_start_date,
         .default = .data$cohort_end_date
       )
-    ) |>
+    )
+
+  if (!is.null(study_cohort_table)) {
+    study_tbl <- if (is.character(study_cohort_table)) cdm[[study_cohort_table]] else study_cohort_table
+    study_cols <- colnames(study_tbl)
+    s_person <- if ("subject_id" %in% study_cols) "subject_id" else "person_id"
+    if (!is.null(censor_date) && censor_date %in% study_cols) {
+      study_bounds <- study_tbl |>
+        dplyr::select(
+          subject_id = dplyr::all_of(s_person),
+          win_start = dplyr::all_of(index_date),
+          win_end = dplyr::all_of(censor_date)
+        ) |>
+        dplyr::distinct()
+      raw_visits <- raw_visits |>
+        dplyr::inner_join(study_bounds, by = "subject_id") |>
+        dplyr::filter(
+          .data$cohort_start_date >= .data$win_start &
+            (is.na(.data$win_end) | .data$cohort_start_date <= .data$win_end)
+        ) |>
+        dplyr::select("subject_id", "cohort_start_date", "cohort_end_date") |>
+        dplyr::distinct()
+    } else {
+      study_bounds <- study_tbl |>
+        dplyr::select(
+          subject_id = dplyr::all_of(s_person),
+          win_start = dplyr::all_of(index_date)
+        ) |>
+        dplyr::distinct()
+      raw_visits <- raw_visits |>
+        dplyr::inner_join(study_bounds, by = "subject_id") |>
+        dplyr::filter(.data$cohort_start_date >= .data$win_start) |>
+        dplyr::select("subject_id", "cohort_start_date", "cohort_end_date") |>
+        dplyr::distinct()
+    }
+  }
+
+  raw_visits <- raw_visits |>
     dplyr::compute(name = paste0(prefix, "raw_vis"), temporary = FALSE, overwrite = TRUE)
 
   # Step 2: Track cumulative maximum end date within patient history
@@ -155,6 +216,11 @@ compute_hospitalization_cohorts <- function(
 #' @param gapDays Maximum gap in days between contiguous stays to collapse into a single episode. Default: `1L`.
 #' @param collapseGap Optional alias for `gapDays`. Default: `NULL`.
 #' @param readmission_window Backward compatible snake_case parameter.
+#' @param studyCohortTable Optional cohort table name (or `cohort_table`) in `cdm` used to pre-filter visits to each subject's follow-up window before collapsing episodes. Default: `NULL`.
+#' @param indexDate Date column in `studyCohortTable` marking start of follow-up. Default: `"cohort_start_date"`.
+#' @param censorDate Optional date column in `studyCohortTable` marking end of follow-up. Default: `"cohort_end_date"`.
+#' @param excludeIcuSpecialty Logical; if `TRUE`, excludes visits whose provider specialty is in `icuSpecialtyConceptIds`. Default: `FALSE`.
+#' @param icuSpecialtyConceptIds Integer vector of OMOP provider specialty concept IDs for ICU. Default: `c(38004500L)`.
 #' @export
 computeHospitalizationCohorts <- function(
   cdm,
@@ -164,7 +230,12 @@ computeHospitalizationCohorts <- function(
   readmissionWindow = 30L,
   gapDays = 1L,
   collapseGap = NULL,
-  readmission_window = NULL
+  readmission_window = NULL,
+  studyCohortTable = NULL,
+  indexDate = "cohort_start_date",
+  censorDate = "cohort_end_date",
+  excludeIcuSpecialty = FALSE,
+  icuSpecialtyConceptIds = c(38004500L)
 ) {
   win <- if (!is.null(readmission_window)) readmission_window else readmissionWindow
   gap <- if (!is.null(collapseGap)) collapseGap else gapDays
@@ -174,6 +245,11 @@ computeHospitalizationCohorts <- function(
     name = name,
     visit_concept_ids = all_concepts,
     readmission_window = win,
-    collapse_gap = gap
+    collapse_gap = gap,
+    study_cohort_table = studyCohortTable,
+    index_date = indexDate,
+    censor_date = censorDate,
+    exclude_icu_specialty = excludeIcuSpecialty,
+    icu_specialty_concept_ids = icuSpecialtyConceptIds
   )
 }

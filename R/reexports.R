@@ -29,13 +29,17 @@ CohortUtilisation::addPrescriptions
 #' @export
 CohortUtilisation::addProcedures
 
-#' @importFrom CohortUtilisation computeHospitalizationCohorts compute_hospitalization_cohorts computeInfusionCohorts
+#' @importFrom CohortUtilisation computeHospitalizationCohorts compute_hospitalization_cohorts computeInfusionCohorts computeVisitCohorts compute_visit_cohorts
 #' @export
 CohortUtilisation::computeHospitalizationCohorts
 #' @export
 CohortUtilisation::compute_hospitalization_cohorts
 #' @export
 CohortUtilisation::computeInfusionCohorts
+#' @export
+CohortUtilisation::computeVisitCohorts
+#' @export
+CohortUtilisation::compute_visit_cohorts
 
 #' @importFrom CohortUtilisation summariseUtilization tableUtilization plotUtilization
 #' @export

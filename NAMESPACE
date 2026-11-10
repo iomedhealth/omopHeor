@@ -17,7 +17,9 @@ export(assess_balance)
 export(compile_trajectories)
 export(computeHospitalizationCohorts)
 export(computeInfusionCohorts)
+export(computeVisitCohorts)
 export(compute_hospitalization_cohorts)
+export(compute_visit_cohorts)
 export(extractHcru)
 export(extract_hcru)
 export(fit_ps)
@@ -71,7 +73,9 @@ importFrom(CohortUtilisation,
   addVisits,
   computeHospitalizationCohorts,
   computeInfusionCohorts,
+  computeVisitCohorts,
   compute_hospitalization_cohorts,
+  compute_visit_cohorts,
   plotUtilization,
   summariseUtilization,
   tableUtilization

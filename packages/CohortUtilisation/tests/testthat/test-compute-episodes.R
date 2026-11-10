@@ -55,3 +55,29 @@ test_that("computeInfusionCohorts creates infusion episodes", {
   expect_equal(unique(inf_df$cohort_definition_id), 1L)
   expect_equal(inf_df$subject_id[1], 1L)
 })
+
+test_that("computeVisitCohorts generates emergency, outpatient, and specialty visit cohorts", {
+  cdm <- hermes_test_cdm()
+
+  cdm$visit_cohorts <- computeVisitCohorts(
+    cdm = cdm,
+    name = "visit_cohorts",
+    settings = c("emergency", "outpatient", "inpatient", "icu"),
+    specialties = list(
+      oncology = c(38004507L),
+      dermatology = c(38004452L)
+    ),
+    studyCohortTable = "target_cohort"
+  )
+
+  expect_true(inherits(cdm$visit_cohorts, "cohort_table"))
+  cohort_set <- omopgenerics::settings(cdm$visit_cohorts)
+  expect_equal(
+    cohort_set$cohort_name,
+    c("inpatient_visit", "icu_visit", "emergency_visit", "gp_visit", "specialist_visit", "oncology_visit", "dermatology_visit")
+  )
+
+  vis_df <- cdm$visit_cohorts |> dplyr::collect()
+  expect_gt(nrow(vis_df), 0)
+  expect_true(all(vis_df$cohort_start_date <= vis_df$cohort_end_date))
+})

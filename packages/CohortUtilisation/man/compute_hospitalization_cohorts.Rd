@@ -11,7 +11,12 @@ compute_hospitalization_cohorts(
   visit_concept_ids = c(9201L, 262L, 32037L, 581379L),
   readmission_window = 30L,
   collapse_gap = 1L,
-  gap_days = NULL
+  gap_days = NULL,
+  study_cohort_table = NULL,
+  index_date = "cohort_start_date",
+  censor_date = "cohort_end_date",
+  exclude_icu_specialty = FALSE,
+  icu_specialty_concept_ids = c(38004500L)
 )
 
 computeHospitalizationCohorts(
@@ -22,7 +27,12 @@ computeHospitalizationCohorts(
   readmissionWindow = 30L,
   gapDays = 1L,
   collapseGap = NULL,
-  readmission_window = NULL
+  readmission_window = NULL,
+  studyCohortTable = NULL,
+  indexDate = "cohort_start_date",
+  censorDate = "cohort_end_date",
+  excludeIcuSpecialty = FALSE,
+  icuSpecialtyConceptIds = c(38004500L)
 )
 }
 \arguments{
@@ -38,6 +48,16 @@ computeHospitalizationCohorts(
 
 \item{gap_days}{Optional alias for \code{collapse_gap}.}
 
+\item{study_cohort_table}{Optional cohort table name (or \code{cohort_table}) in \code{cdm} used to pre-filter visits to each subject's follow-up window (\verb{[index_date, censor_date]}) before collapsing episodes. Default: \code{NULL}.}
+
+\item{index_date}{Date column in \code{study_cohort_table} marking start of follow-up. Default: \code{"cohort_start_date"}.}
+
+\item{censor_date}{Optional date column in \code{study_cohort_table} marking end of follow-up. Default: \code{"cohort_end_date"}.}
+
+\item{exclude_icu_specialty}{Logical; if \code{TRUE}, excludes visits whose provider specialty is in \code{icu_specialty_concept_ids} (matching \code{addHospitalizations()} general inpatient definition). Default: \code{FALSE}.}
+
+\item{icu_specialty_concept_ids}{Integer vector of OMOP provider specialty concept IDs for ICU. Default: \code{c(38004500L)}.}
+
 \item{visitConceptIds}{Integer vector of OMOP visit concept IDs. Default: \code{c(9201L, 262L, 581379L)}.}
 
 \item{icuConceptIds}{Integer vector of OMOP ICU visit concept IDs. Default: \code{32037L}.}
@@ -47,6 +67,16 @@ computeHospitalizationCohorts(
 \item{gapDays}{Maximum gap in days between contiguous stays to collapse into a single episode. Default: \code{1L}.}
 
 \item{collapseGap}{Optional alias for \code{gapDays}. Default: \code{NULL}.}
+
+\item{studyCohortTable}{Optional cohort table name (or \code{cohort_table}) in \code{cdm} used to pre-filter visits to each subject's follow-up window before collapsing episodes. Default: \code{NULL}.}
+
+\item{indexDate}{Date column in \code{studyCohortTable} marking start of follow-up. Default: \code{"cohort_start_date"}.}
+
+\item{censorDate}{Optional date column in \code{studyCohortTable} marking end of follow-up. Default: \code{"cohort_end_date"}.}
+
+\item{excludeIcuSpecialty}{Logical; if \code{TRUE}, excludes visits whose provider specialty is in \code{icuSpecialtyConceptIds}. Default: \code{FALSE}.}
+
+\item{icuSpecialtyConceptIds}{Integer vector of OMOP provider specialty concept IDs for ICU. Default: \code{c(38004500L)}.}
 }
 \value{
 An \code{omopgenerics} cohort table with cohort definitions:
